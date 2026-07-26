@@ -7,11 +7,20 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # Database URL (supports SQLite or external DB via DATABASE_URL)
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./treasury.db")
+def get_database_url() -> str:
+    """Return a usable database URL, falling back to SQLite when unset or blank."""
+    raw_url = os.getenv("DATABASE_URL", "").strip()
+    if not raw_url:
+        return "sqlite:///./treasury.db"
 
-# Normalize legacy postgres scheme if present
-if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
-    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    # Normalize legacy postgres scheme if present
+    if raw_url.startswith("postgres://"):
+        raw_url = raw_url.replace("postgres://", "postgresql://", 1)
+
+    return raw_url
+
+
+SQLALCHEMY_DATABASE_URL = get_database_url()
 
 # Create engine with SQLite-specific args only when needed
 connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}

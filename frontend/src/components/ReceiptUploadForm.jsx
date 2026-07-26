@@ -34,7 +34,6 @@ import SendIcon from '@mui/icons-material/Send';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import CloseIcon from '@mui/icons-material/Close';
 import FlipCameraAndroidIcon from '@mui/icons-material/FlipCameraAndroid';
-import axios from 'axios';
 import api from '../api';
 
 export default function ReceiptUploadForm() {
@@ -228,9 +227,12 @@ export default function ReceiptUploadForm() {
       setImage(null);
       setImagePreview(null);
     } catch (error) {
+      const isNetworkError = !error.response;
       setMessage({
         type: 'error',
-        text: error.response?.data?.detail || 'Upload failed. Please try again.',
+        text: isNetworkError
+          ? 'Cannot reach the backend server. Please start the backend service and try again.'
+          : error.response?.data?.detail || 'Upload failed. Please try again.',
       });
     } finally {
       setLoading(false);
@@ -788,7 +790,13 @@ export default function ReceiptUploadForm() {
           >
             {loading ? (
               <Stack direction="row" spacing={2} alignItems="center">
-                <CircularProgress size={{ xs: 20, sm: 24 }} color="inherit" />
+                <CircularProgress
+                  color="inherit"
+                  sx={{
+                    width: { xs: 20, sm: 24 },
+                    height: { xs: 20, sm: 24 },
+                  }}
+                />
                 <span>Submitting...</span>
               </Stack>
             ) : (

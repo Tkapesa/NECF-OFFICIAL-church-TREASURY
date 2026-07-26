@@ -25,6 +25,12 @@ const api = axios.create({
   baseURL,
 });
 
+const AUTH_OPTIONAL_PATHS = ['/login', '/receipts/upload'];
+
+const isAuthOptionalRequest = (url = '') => {
+  return AUTH_OPTIONAL_PATHS.some((path) => url.includes(path));
+};
+
 // Debug log (will be stripped in production minification but helpful if visible)
 if (import.meta.env.DEV) {
   // eslint-disable-next-line no-console
@@ -46,7 +52,7 @@ api.interceptors.request.use((config) => {
       // eslint-disable-next-line no-console
       console.log(`[API] Token attached to ${config.method?.toUpperCase()} ${config.url}`);
     }
-  } else if (import.meta.env.DEV) {
+  } else if (import.meta.env.DEV && !isAuthOptionalRequest(config.url)) {
     // eslint-disable-next-line no-console
     console.warn(`[API] No token found for ${config.method?.toUpperCase()} ${config.url}`);
   }
@@ -68,10 +74,17 @@ api.interceptors.response.use(
       });
     }
     
-    if (error.response?.status === 401 || error.response?.status === 422) {
+    const requestUrl = error.config?.url || '';
+    const isProtectedRoute = !isAuthOptionalRequest(requestUrl);
+    const responseDetail = typeof error.response?.data?.detail === 'string' ? error.response.data.detail : '';
+    const isJwtValidation422 =
+      error.response?.status === 422 &&
+      /jwt|token|authorization|auth/i.test(responseDetail);
+
+    if (isProtectedRoute && (error.response?.status === 401 || isJwtValidation422)) {
       // Token expired or invalid - clear it and reload
       // eslint-disable-next-line no-console
-      console.warn('[API] Authentication failed (401/422) - clearing token and redirecting to login');
+      console.warn('[API] Authentication failed - clearing token and redirecting to login');
       localStorage.removeItem('token');
       localStorage.removeItem('is_superuser');
       localStorage.removeItem('username');

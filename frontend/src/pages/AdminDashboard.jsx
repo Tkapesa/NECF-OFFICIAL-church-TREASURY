@@ -597,17 +597,29 @@ export default function AdminDashboard() {
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Logo */}
       <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-        <img 
-          src="/necf-logo.png" 
-          alt="NECF Logo" 
-          style={{ 
-            width: '80px', 
-            height: '80px', 
-            objectFit: 'contain',
-            marginBottom: '8px'
-          }} 
-        />
-        <Typography variant="body2" fontWeight="bold" sx={{ textAlign: 'center', color: 'white' }}>
+        <div style={{
+          width: 88,
+          height: 88,
+          borderRadius: 18,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))',
+          boxShadow: '0 8px 20px rgba(15,17,21,0.35)',
+          border: '1px solid rgba(255,255,255,0.06)'
+        }}>
+          <img
+            src="/necf-logo.png"
+            alt="NECF Logo"
+            style={{
+              width: 64,
+              height: 64,
+              objectFit: 'contain',
+              borderRadius: 12,
+            }}
+          />
+        </div>
+        <Typography variant="body2" fontWeight={700} sx={{ textAlign: 'center', color: 'white', letterSpacing: 0.2 }}>
           NECF Treasury
         </Typography>
       </Box>
@@ -622,9 +634,11 @@ export default function AdminDashboard() {
             onClick={() => { setCurrentView('dashboard'); setMobileOpen(false); }}
             sx={{
               borderRadius: 2,
-              '&.Mui-selected': {
-                bgcolor: '#6B1C23',
-                '&:hover': { bgcolor: '#4A0E13' },
+                '&.Mui-selected': {
+                bgcolor: 'linear-gradient(90deg, rgba(107,28,35,1), rgba(74,14,19,1))',
+                boxShadow: '0 8px 22px rgba(75,14,19,0.28)',
+                transform: 'translateX(-2px)',
+                '&:hover': { bgcolor: 'linear-gradient(90deg, rgba(90,24,30,1), rgba(60,12,15,1))' },
               },
             }}
           >
@@ -918,9 +932,10 @@ export default function AdminDashboard() {
         {isAuthenticated && (
           <Box 
             sx={{ 
-              bgcolor: darkMode ? '#1e1e1e' : 'white', 
-              borderBottom: darkMode ? '1px solid #333' : '1px solid #e0e0e0', 
+              bgcolor: darkMode ? '#171a21' : 'rgba(255,255,255,0.94)', 
+              borderBottom: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(15,17,21,0.06)', 
               p: { xs: 2, sm: 2.5 },
+              backdropFilter: 'blur(18px)',
               position: 'sticky',
               top: 0,
               zIndex: 10,
@@ -1058,15 +1073,15 @@ export default function AdminDashboard() {
             }}>
               <Paper
                 sx={{
-                  p: '4px 8px',
+                  p: '6px 10px',
                   display: 'flex',
                   alignItems: 'center',
                   flex: { xs: '1 1 100%', sm: '1 1 auto' },
-                  minWidth: { xs: 'auto', sm: 300 },
-                  maxWidth: { xs: '100%', sm: 400 },
-                  boxShadow: 'none',
-                  border: darkMode ? '1px solid #333' : '1px solid #e0e0e0',
-                  bgcolor: darkMode ? '#2a2a2a' : 'white',
+                  minWidth: { xs: 'auto', sm: 320 },
+                  maxWidth: { xs: '100%', sm: 430 },
+                  boxShadow: '0 10px 24px rgba(15, 17, 21, 0.06)',
+                  border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(15,17,21,0.06)',
+                  bgcolor: darkMode ? '#20242d' : '#ffffff',
                 }}
               >
                 <IconButton sx={{ p: { xs: '8px', sm: '10px' }, color: darkMode ? 'white' : 'inherit' }}>
@@ -1149,7 +1164,7 @@ export default function AdminDashboard() {
             flexGrow: 1, 
             p: { xs: 1.5, sm: 2, md: 3 }, 
             overflow: 'auto', 
-            bgcolor: darkMode ? '#121212' : '#f5f5f5',
+            bgcolor: darkMode ? '#0f1115' : '#f4f6fb',
             height: '100%',
             '&::-webkit-scrollbar': {
               width: '10px',
@@ -1206,13 +1221,15 @@ export default function AdminDashboard() {
                       sx={{ 
                         background: darkMode 
                           ? 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%)'
-                          : 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%)',
+                          : 'linear-gradient(135deg, #7a2430 0%, #5b1622 100%)',
                         color: 'white',
+                        borderRadius: 3,
                         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                         cursor: 'pointer',
+                        boxShadow: '0 16px 34px rgba(107, 28, 35, 0.16)',
                         '&:hover': {
                           transform: { xs: 'translateY(-4px) scale(1.01)', md: 'translateY(-8px) scale(1.02)' },
-                          boxShadow: '0 16px 32px rgba(107, 28, 35, 0.5)',
+                          boxShadow: '0 22px 40px rgba(107, 28, 35, 0.22)',
                         },
                       }}
                     >
@@ -1270,14 +1287,17 @@ export default function AdminDashboard() {
                       elevation={3}
                       sx={{ 
                         background: darkMode
-                          ? 'linear-gradient(135deg, #2a2a2a 0%, #3a3a3a 100%)'
-                          : 'linear-gradient(135deg, #1a1a1a 0%, #3a3a3a 100%)',
-                        color: 'white',
+                          ? 'linear-gradient(135deg, #232631 0%, #171a21 100%)'
+                          : 'linear-gradient(135deg, #ffffff 0%, #f3f5f9 100%)',
+                        color: darkMode ? 'white' : '#1f2937',
+                        border: darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(15,17,21,0.06)',
+                        borderRadius: 3,
                         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                         cursor: 'pointer',
+                        boxShadow: '0 18px 34px rgba(15, 17, 21, 0.06)',
                         '&:hover': {
                           transform: { xs: 'translateY(-4px) scale(1.01)', md: 'translateY(-8px) scale(1.02)' },
-                          boxShadow: darkMode ? '0 16px 32px rgba(42, 42, 42, 0.8)' : '0 16px 32px rgba(26, 26, 26, 0.5)',
+                          boxShadow: '0 24px 40px rgba(15, 17, 21, 0.10)',
                         },
                       }}
                     >
@@ -1335,14 +1355,16 @@ export default function AdminDashboard() {
                       elevation={3}
                       sx={{ 
                         background: darkMode
-                          ? 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%)'
-                          : 'linear-gradient(135deg, #8B2C33 0%, #6B1C23 100%)',
+                          ? 'linear-gradient(135deg, #8b3040 0%, #6b1c23 100%)'
+                          : 'linear-gradient(135deg, #9a3847 0%, #6b1c23 100%)',
                         color: 'white',
+                        borderRadius: 3,
                         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                         cursor: 'pointer',
+                        boxShadow: '0 16px 34px rgba(107, 28, 35, 0.16)',
                         '&:hover': {
                           transform: { xs: 'translateY(-4px) scale(1.01)', md: 'translateY(-8px) scale(1.02)' },
-                          boxShadow: '0 16px 32px rgba(139, 44, 51, 0.5)',
+                          boxShadow: '0 22px 40px rgba(107, 28, 35, 0.22)',
                         },
                       }}
                     >
@@ -1400,14 +1422,17 @@ export default function AdminDashboard() {
                       elevation={3}
                       sx={{ 
                         background: darkMode
-                          ? 'linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%)'
-                          : 'linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%)',
-                        color: 'white',
+                          ? 'linear-gradient(135deg, #2a2f3a 0%, #1f2430 100%)'
+                          : 'linear-gradient(135deg, #f7f8fb 0%, #eef2f7 100%)',
+                        color: darkMode ? 'white' : '#374151',
+                        borderRadius: 3,
+                        border: darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(15,17,21,0.06)',
                         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                         cursor: 'pointer',
+                        boxShadow: '0 18px 34px rgba(15, 17, 21, 0.06)',
                         '&:hover': {
                           transform: { xs: 'translateY(-4px) scale(1.01)', md: 'translateY(-8px) scale(1.02)' },
-                          boxShadow: darkMode ? '0 16px 32px rgba(58, 58, 58, 0.8)' : '0 16px 32px rgba(42, 42, 42, 0.5)',
+                          boxShadow: '0 24px 40px rgba(15, 17, 21, 0.10)',
                         },
                       }}
                     >
@@ -1831,8 +1856,8 @@ export default function AdminDashboard() {
               transition: 'all 0.3s ease',
               '&:hover': {
                 background: 'linear-gradient(135deg, #4A0E13 0%, #6B1C23 100%)',
-                transform: 'scale(1.1) rotate(90deg)',
-                boxShadow: '0 8px 25px rgba(107, 28, 35, 0.6)',
+                transform: 'scale(1.08)',
+                boxShadow: '0 8px 25px rgba(107, 28, 35, 0.36)',
               },
             }}
           >

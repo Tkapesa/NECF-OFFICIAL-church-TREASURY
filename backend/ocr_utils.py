@@ -3,7 +3,12 @@ OCR utilities using pytesseract
 """
 import re
 from datetime import datetime
-from PIL import Image, ImageOps, ImageFilter
+try:
+    from PIL import Image, ImageOps, ImageFilter
+    PIL_AVAILABLE = True
+except Exception:
+    PIL_AVAILABLE = False
+
 import pytesseract
 
 
@@ -12,20 +17,31 @@ def extract_receipt_data(image_path: str) -> dict:
     Extract price, date, and time from receipt image using OCR
     Returns dict with extracted fields
     """
+    # If Pillow is not available, skip OCR and return placeholders
+    if not PIL_AVAILABLE:
+        msg = "OCR unavailable: PIL (Pillow) not installed"
+        print(msg)
+        return {
+            "ocr_price": None,
+            "ocr_date": None,
+            "ocr_time": None,
+            "ocr_raw_text": msg
+        }
+
     try:
         # Open image and run OCR with preprocessing + multiple configs
         image = Image.open(image_path)
         text = run_ocr_with_fallbacks(image)
-        
+
         # Extract price (look for currency symbols and numbers)
         price = extract_price(text)
-        
+
         # Extract date
         date = extract_date(text)
-        
+
         # Extract time
         time = extract_time(text)
-        
+
         return {
             "ocr_price": price,
             "ocr_date": date,

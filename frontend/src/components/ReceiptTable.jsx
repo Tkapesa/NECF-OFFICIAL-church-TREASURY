@@ -628,10 +628,11 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
       elevation={4} 
       sx={{ 
         width: '100%', 
-        bgcolor: 'white', 
-        borderRadius: 2,
+        bgcolor: darkMode ? '#171a21' : 'white', 
+        borderRadius: 3,
         overflow: 'hidden',
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+        border: darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(15,17,21,0.06)',
+        boxShadow: '0 18px 40px rgba(15, 17, 21, 0.08)',
         animation: 'fadeIn 0.8s ease-out',
         '@keyframes fadeIn': {
           from: { opacity: 0, transform: 'translateY(20px)' },
@@ -644,8 +645,8 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
         <Box 
           sx={{ 
             p: 2, 
-            bgcolor: 'rgba(107, 28, 35, 0.08)',
-            borderBottom: '1px solid #e0e0e0',
+            bgcolor: darkMode ? 'rgba(107, 28, 35, 0.18)' : 'rgba(107, 28, 35, 0.08)',
+            borderBottom: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(15,17,21,0.06)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -671,7 +672,9 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
       )}
 
       <TableContainer sx={{
-        bgcolor: darkMode ? '#2a2a2a' : 'white',
+        bgcolor: darkMode ? '#171a21' : 'white',
+        borderRadius: 12,
+        p: 1,
         '&::-webkit-scrollbar': {
           height: '8px',
           width: '8px',
@@ -690,11 +693,11 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
         <Table sx={{ minWidth: 650 }}>
           <TableHead>
             <TableRow sx={{ 
-              bgcolor: darkMode ? '#1e1e1e' : '#fafafa',
-              borderBottom: darkMode ? '2px solid #333' : '2px solid #e0e0e0',
+              bgcolor: darkMode ? '#20242d' : '#f8fafc',
+              borderBottom: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(15,17,21,0.06)',
             }}>
-              <TableCell padding="checkbox" sx={{ bgcolor: darkMode ? '#1e1e1e' : '#fafafa' }} />
-              <TableCell padding="checkbox" sx={{ bgcolor: darkMode ? '#1e1e1e' : '#fafafa' }}>
+              <TableCell padding="checkbox" sx={{ bgcolor: darkMode ? '#20242d' : '#f8fafc' }} />
+              <TableCell padding="checkbox" sx={{ bgcolor: darkMode ? '#20242d' : '#f8fafc' }}>
                 <Checkbox
                   indeterminate={selectedReceipts.length > 0 && selectedReceipts.length < receipts.length}
                   checked={receipts.length > 0 && selectedReceipts.length === receipts.length}
@@ -712,7 +715,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#1e1e1e' : '#fafafa',
+                bgcolor: darkMode ? '#20242d' : '#f8fafc',
               }}>
                 Name / Receipt
               </TableCell>
@@ -722,7 +725,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#1e1e1e' : '#fafafa',
+                bgcolor: darkMode ? '#20242d' : '#f8fafc',
               }}>
                 Submitted By
               </TableCell>
@@ -732,7 +735,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#1e1e1e' : '#fafafa',
+                bgcolor: darkMode ? '#20242d' : '#f8fafc',
               }}>
                 Date
               </TableCell>
@@ -742,7 +745,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#1e1e1e' : '#fafafa',
+                bgcolor: darkMode ? '#20242d' : '#f8fafc',
               }}>
                 Amount
               </TableCell>
@@ -752,7 +755,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#1e1e1e' : '#fafafa',
+                bgcolor: darkMode ? '#20242d' : '#f8fafc',
               }}>
                 Status
               </TableCell>
@@ -762,7 +765,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#1e1e1e' : '#fafafa',
+                bgcolor: darkMode ? '#20242d' : '#f8fafc',
               }}>
                 Actions
               </TableCell>
@@ -782,10 +785,10 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                     sx={{
                       bgcolor: darkMode ? '#2a2a2a' : 'white',
                       '&:hover': { 
-                        bgcolor: darkMode ? 'rgba(107, 28, 35, 0.15)' : 'rgba(107, 28, 35, 0.04)',
-                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                        bgcolor: darkMode ? 'rgba(107, 28, 35, 0.16)' : 'rgba(107, 28, 35, 0.05)',
+                        boxShadow: '0 8px 18px rgba(15, 17, 21, 0.06)',
                       },
-                      borderBottom: isExpanded ? 'none' : (darkMode ? '1px solid #333' : '1px solid #f0f0f0'),
+                      borderBottom: isExpanded ? 'none' : (darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(15,17,21,0.06)'),
                       transition: 'all 0.2s ease',
                       cursor: 'pointer',
                       '&.Mui-selected': {
@@ -846,10 +849,10 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                               transition: 'all 0.2s ease',
                               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                               '&:hover': { 
-                                transform: 'scale(1.15)',
-                                boxShadow: '0 4px 12px rgba(107, 28, 35, 0.3)',
-                                borderColor: '#6B1C23',
-                              },
+                                  transform: 'scale(1.08)',
+                                  boxShadow: '0 8px 22px rgba(15,17,21,0.12)',
+                                  borderColor: '#6B1C23',
+                                },
                             }}
                             onClick={() => handleImagePreview(receipt.image_path, receipt.item_bought)}
                         >
