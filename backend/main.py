@@ -142,9 +142,15 @@ def startup_event():
     # 2. Tesseract verification
     try:
         import subprocess
-        result = subprocess.run(['tesseract', '--version'], 
+        tesseract_bin = os.getenv(
+            "TESSERACT_CMD",
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        )
+        if not os.path.exists(tesseract_bin):
+            tesseract_bin = "tesseract"
+        result = subprocess.run([tesseract_bin, '--version'], 
                               capture_output=True, text=True, timeout=5, shell=False)
-        version_line = result.stdout.split('\n')[0]
+        version_line = (result.stdout or result.stderr).split('\n')[0]
         print(f"✓ Tesseract OCR: {version_line}")
     except Exception as e:
         print(f"⚠️  Tesseract OCR: NOT FOUND - {str(e)}")
@@ -245,6 +251,12 @@ def validate_strong_password(password: str) -> bool:
 @app.get("/")
 def root():
     """Health check"""
+    return {"message": "Church Treasury System API", "status": "running"}
+
+
+@app.get("/api")
+def api_health():
+    """API health check for deployment probes"""
     return {"message": "Church Treasury System API", "status": "running"}
 
 

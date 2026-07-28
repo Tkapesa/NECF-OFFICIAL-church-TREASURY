@@ -9,7 +9,16 @@ try:
 except Exception:
     PIL_AVAILABLE = False
 
+import os
 import pytesseract
+
+# Configure Tesseract path (Windows installs are often not on PATH)
+_tesseract_cmd = os.getenv(
+    "TESSERACT_CMD",
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+)
+if _tesseract_cmd and os.path.exists(_tesseract_cmd):
+    pytesseract.pytesseract.tesseract_cmd = _tesseract_cmd
 
 
 def extract_receipt_data(image_path: str) -> dict:
