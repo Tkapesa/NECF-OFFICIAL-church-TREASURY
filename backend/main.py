@@ -8,15 +8,15 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form, Request
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from datetime import datetime, timedelta
 import bcrypt
 from fastapi_jwt_auth import AuthJWT
 from pydantic import BaseModel
-import shutil
 import os
 import re
 from typing import Optional
@@ -157,38 +157,40 @@ def startup_event():
         print("   OCR functionality will not work!")
     
     # 3. Database verification
-    db_url = os.getenv("DATABASE_URL", "sqlite:///./treasury.db")
-    if db_url.startswith("postgresql"):
-        print(f"✓ Database: Neon PostgreSQL (connected)")
-        # Test connection
+    db_url = os.getenv("DATABASE_URL", "").strip() or "sqlite:///./treasury.db"
+    if db_url.startswith("postgres"):
+        print(f"✓ Database: PostgreSQL (persistent)")
         db = None
         try:
             db = next(get_db())
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
             print(f"✓ Database connection: VERIFIED")
             receipt_count = db.query(Receipt).count()
             admin_count = db.query(Admin).count()
-            print(f"✓ Current data: {receipt_count} receipts, {admin_count} admins")
+            with_images = db.query(Receipt).filter(Receipt.image_data.isnot(None)).count()
+            print(f"✓ Current data: {receipt_count} receipts ({with_images} with DB-stored images), {admin_count} admins")
         except Exception as e:
             print(f"⚠️  Database connection: FAILED - {str(e)}")
         finally:
             if db:
                 db.close()
     else:
-        print(f"✓ Database: SQLite (local)")
+        print(f"⚠️  Database: SQLite (ephemeral on Render — data is lost on restart!)")
+        print(f"   Set DATABASE_URL to Neon PostgreSQL for production persistence.")
     
     # 4. Uploads directory verification
     uploads_dir = "uploads"
     if os.path.exists(uploads_dir) and os.path.isdir(uploads_dir):
         file_count = sum(1 for f in os.listdir(uploads_dir) if os.path.isfile(os.path.join(uploads_dir, f)))
-        print(f"✓ Uploads directory: EXISTS ({file_count} files)")
+        print(f"✓ Uploads directory: EXISTS ({file_count} files) — used as OCR temp cache")
         print(f"  Path: {os.path.abspath(uploads_dir)}")
     else:
         print(f"⚠️  Uploads directory: NOT FOUND")
     
     # 5. Environment check
-    env_mode = "PRODUCTION" if os.getenv("DATABASE_URL") else "DEVELOPMENT"
+    env_mode = "PRODUCTION" if (os.getenv("DATABASE_URL") or os.getenv("RENDER")) else "DEVELOPMENT"
     print(f"✓ Environment: {env_mode}")
+    print(f"✓ Image storage: database (image_data) + local uploads cache")
     
     # 6. CORS origins
     cors_origins = os.getenv("CORS_ORIGINS", "localhost")
@@ -435,6 +437,19 @@ def delete_admin(
 
 # ============ RECEIPT ROUTES ============
 
+def _public_base_url(request: Request) -> str:
+    """Prefer proxy headers so image URLs use https://api.domain.com behind Render."""
+    proto = request.headers.get("x-forwarded-proto")
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    if proto and host:
+        return f"{proto}://{host}".rstrip("/")
+    return str(request.base_url).rstrip("/")
+
+
+def _receipt_image_url(request: Request, receipt_id: int) -> str:
+    return f"{_public_base_url(request)}/api/receipts/{receipt_id}/image"
+
+
 @app.post("/api/receipts/upload")
 async def upload_receipt(
     image: UploadFile = File(...),
@@ -447,39 +462,78 @@ async def upload_receipt(
     """User endpoint to upload receipt"""
     
     # Validate file type
-    if not image.content_type.startswith("image/"):
+    if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files allowed")
     
-    # Save uploaded image
+    # Read bytes once — persist in DB (survives Render restarts) + write temp file for OCR
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Empty image file")
+
+    os.makedirs("uploads", exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{timestamp}_{image.filename}"
+    safe_name = os.path.basename(image.filename or "receipt.jpg")
+    filename = f"{timestamp}_{safe_name}"
     file_path = f"uploads/{filename}"
     
     with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(image.file, buffer)
+        buffer.write(image_bytes)
     
     # Run OCR on the image
     ocr_data = extract_receipt_data(file_path)
     
-    # Create receipt record
+    # Create receipt record with image stored in the database
     receipt = Receipt(
         user_name=user_name,
         user_phone=user_phone,
         item_bought=item_bought,
         approved_by=approved_by,
         image_path=file_path,
+        image_data=image_bytes,
+        image_content_type=image.content_type or "image/jpeg",
         **ocr_data
     )
     
     db.add(receipt)
     db.commit()
     db.refresh(receipt)
+
+    print(
+        f"✅ Receipt #{receipt.id} saved "
+        f"(user={user_name}, bytes={len(image_bytes)})"
+    )
     
     return {
         "message": "Receipt uploaded successfully",
         "receipt_id": receipt.id,
         "ocr_data": ocr_data
     }
+
+
+@app.get("/api/receipts/{receipt_id}/image")
+def get_receipt_image(receipt_id: int, db: Session = Depends(get_db)):
+    """Serve receipt image from database (preferred) or local uploads fallback."""
+    receipt = db.query(Receipt).filter(Receipt.id == receipt_id).first()
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    if receipt.image_data:
+        return Response(
+            content=bytes(receipt.image_data),
+            media_type=receipt.image_content_type or "image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    if receipt.image_path and os.path.exists(receipt.image_path):
+        with open(receipt.image_path, "rb") as f:
+            content = f.read()
+        return Response(
+            content=content,
+            media_type=receipt.image_content_type or "image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    raise HTTPException(status_code=404, detail="Receipt image not found")
 
 
 @app.get("/api/receipts")
@@ -509,9 +563,9 @@ def get_receipts(request: Request, db: Session = Depends(get_db), Authorize: Aut
                     "ocr_date": r.ocr_date,
                     "ocr_time": r.ocr_time,
                     "ocr_raw_text": r.ocr_raw_text,
-                    # Build absolute image URL dynamically (avoids hardcoded localhost)
-                    "image_path": f"{str(request.base_url).rstrip('/')}/{r.image_path}",
-                    "created_at": r.created_at.isoformat()
+                    # Stable API URL — works even when local uploads/ is wiped on Render
+                    "image_path": _receipt_image_url(request, r.id),
+                    "created_at": r.created_at.isoformat() if r.created_at else None
                 }
                 for r in receipts
             ]

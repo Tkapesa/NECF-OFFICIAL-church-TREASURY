@@ -11,6 +11,8 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: REQUIRE_POSTGRES
+        value: "true"
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: PORT

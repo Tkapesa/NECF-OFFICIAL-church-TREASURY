@@ -1,7 +1,7 @@
 """
 Database models for Church Treasury System
 """
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean, LargeBinary
 from sqlalchemy.sql import func
 from database import Base
 
@@ -35,8 +35,10 @@ class Receipt(Base):
     ocr_time = Column(String, nullable=True)
     ocr_raw_text = Column(Text, nullable=True)  # Full OCR text for reference
     
-    # Receipt image path
+    # Receipt image — path kept for local/dev; image_data persists on Render/Postgres
     image_path = Column(String, nullable=False)
+    image_data = Column(LargeBinary, nullable=True)
+    image_content_type = Column(String, nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, server_default=func.now())
