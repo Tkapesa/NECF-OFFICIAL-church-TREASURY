@@ -1,0 +1,40 @@
+# Contabo VPS: single container (FastAPI + built React) behind existing nginx proxy.
+# Joins the HawkBytes/SMC docker network so nginx can route necftreausry.com here.
+
+services:
+  web:
+    container_name: necf-treasury
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8000"
+      SERVE_FRONTEND: "1"
+      FRONTEND_DIST: /app/frontend/dist
+      DATABASE_URL: sqlite:////app/backend/data/treasury.db
+      CORS_ORIGINS: https://necftreausry.com,https://www.necftreausry.com,http://necftreausry.com,http://www.necftreausry.com
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-necf-jwt-secret}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
+      DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME:-admin}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-admin123}
+    volumes:
+      - necf_data:/app/backend/data
+      - necf_uploads:/app/backend/uploads
+    networks:
+      - smc
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  necf_data:
+  necf_uploads:
+
+networks:
+  smc:
+    external: true
+    name: social-media-crossposter_smc
