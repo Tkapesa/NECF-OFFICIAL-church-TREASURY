@@ -204,6 +204,11 @@ export default function ReceiptUploadForm() {
       return;
     }
     
+    if (!image) {
+      setMessage({ type: 'error', text: 'Please upload or capture a receipt image first.' });
+      return;
+    }
+
     setLoading(true);
     setMessage({ type: '', text: '' });
 
@@ -220,7 +225,23 @@ export default function ReceiptUploadForm() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      setMessage({ type: 'success', text: response.data.message });
+      const payload = response.data;
+      if (!payload || typeof payload !== 'object' || !payload.receipt_id) {
+        throw new Error(
+          'Upload did not reach the backend API. Please refresh and try again, or contact support.'
+        );
+      }
+
+      const ocr = payload.ocr_data || {};
+      const ocrBits = [ocr.ocr_price, ocr.ocr_date, ocr.ocr_time].filter(Boolean);
+      const ocrNote = ocrBits.length
+        ? ` OCR detected: ${ocrBits.join(', ')}.`
+        : '';
+
+      setMessage({
+        type: 'success',
+        text: `${payload.message || 'Receipt uploaded successfully'} (Receipt #${payload.receipt_id}).${ocrNote}`,
+      });
       
       // Reset form
       setFormData({ user_name: '', user_phone: '', item_bought: '', approved_by: '' });

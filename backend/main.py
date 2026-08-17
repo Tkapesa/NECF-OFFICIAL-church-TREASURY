@@ -475,7 +475,7 @@ async def upload_receipt(
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files allowed")
     
-    # Read bytes once — persist in DB (survives Render restarts) + write temp file for OCR
+    # Read bytes once — persist in DB + write temp file for OCR
     image_bytes = await image.read()
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Empty image file")
@@ -485,28 +485,41 @@ async def upload_receipt(
     safe_name = os.path.basename(image.filename or "receipt.jpg")
     filename = f"{timestamp}_{safe_name}"
     file_path = f"uploads/{filename}"
-    
-    with open(file_path, "wb") as buffer:
-        buffer.write(image_bytes)
-    
-    # Run OCR on the image
-    ocr_data = extract_receipt_data(file_path)
-    
-    # Create receipt record with image stored in the database
-    receipt = Receipt(
-        user_name=user_name,
-        user_phone=user_phone,
-        item_bought=item_bought,
-        approved_by=approved_by,
-        image_path=file_path,
-        image_data=image_bytes,
-        image_content_type=image.content_type or "image/jpeg",
-        **ocr_data
-    )
-    
-    db.add(receipt)
-    db.commit()
-    db.refresh(receipt)
+
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(image_bytes)
+
+        ocr_data = extract_receipt_data(file_path)
+
+        receipt = Receipt(
+            user_name=user_name,
+            user_phone=user_phone,
+            item_bought=item_bought,
+            approved_by=approved_by,
+            image_path=file_path,
+            image_data=image_bytes,
+            image_content_type=image.content_type or "image/jpeg",
+            **ocr_data
+        )
+
+        db.add(receipt)
+        db.commit()
+        db.refresh(receipt)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+        print(f"❌ Upload failed for {user_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to save receipt: {str(e)}")
 
     print(
         f"✅ Receipt #{receipt.id} saved "

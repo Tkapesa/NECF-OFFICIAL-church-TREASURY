@@ -3,19 +3,45 @@
  */
 import axios from 'axios';
 
-// Determine base URL priority (no forced localhost fallback in production):
-// 1. Explicit VITE_API_URL env var (if provided)
-// 2. Current window.location.origin + /api
-//    This prevents accidental use of localhost after deployment if stale bundle cached.
+const PRODUCTION_HOSTS = new Set([
+  'necftreausry.com',
+  'www.necftreausry.com',
+  '169.58.63.125',
+]);
+
+const normalizeApiUrl = (url) => {
+  let normalized = url.replace(/\/$/, '');
+  if (normalized && !/^https?:\/\//i.test(normalized)) {
+    normalized = `https://${normalized}`;
+  }
+  return normalized;
+};
+
+// Determine base URL priority:
+// 1. Same-origin /api on known production hosts (Contabo / single-container deploy)
+// 2. Explicit VITE_API_URL env var (if provided)
+// 3. localhost in dev
+// 4. window.location.origin + /api
 const deriveBaseURL = () => {
-  const envUrl = import.meta.env.VITE_API_URL?.trim();
-  if (envUrl) return envUrl.replace(/\/$/, '');
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  const host = window.location.hostname;
+
+  if (PRODUCTION_HOSTS.has(host)) {
+    return `${window.location.origin}/api`;
+  }
+
+  if (host === 'localhost' || host === '127.0.0.1') {
     return 'http://localhost:8000/api';
   }
+
+  const envUrl = import.meta.env.VITE_API_URL?.trim();
+  if (envUrl) {
+    return normalizeApiUrl(envUrl);
+  }
+
   if (import.meta.env.DEV) {
     return 'http://localhost:8000/api';
   }
+
   return `${window.location.origin}/api`;
 };
 
