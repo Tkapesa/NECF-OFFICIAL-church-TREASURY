@@ -19,7 +19,7 @@ from fastapi_jwt_auth import AuthJWT
 from pydantic import BaseModel
 import os
 import re
-from typing import Optional
+from fastapi.responses import FileResponse
 
 from database import get_db, init_db
 from models import Receipt, Admin
@@ -74,6 +74,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 # Initialize FastAPI app
 app = FastAPI(title="Church Treasury System")
+
+FRONTEND_DIST = os.getenv(
+    "FRONTEND_DIST",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")),
+)
+SERVE_FRONTEND = os.getenv("SERVE_FRONTEND", "0") == "1"
 
 # CORS middleware for React frontend
 # CORS origins (comma-separated list or "*")
@@ -252,7 +258,10 @@ def validate_strong_password(password: str) -> bool:
 
 @app.get("/")
 def root():
-    """Health check"""
+    """Serve the SPA when bundled, otherwise API health."""
+    index = os.path.join(FRONTEND_DIST, "index.html")
+    if SERVE_FRONTEND and os.path.isfile(index):
+        return FileResponse(index)
     return {"message": "Church Treasury System API", "status": "running"}
 
 
@@ -716,13 +725,18 @@ def bulk_delete_receipts(
 
 # ============ FRONTEND STATIC (OPTIONAL) ============
 
-FRONTEND_DIST = os.getenv(
-    "FRONTEND_DIST",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
-)
-
-if os.getenv("SERVE_FRONTEND", "0") == "1" and os.path.isdir(FRONTEND_DIST):
-    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+if SERVE_FRONTEND and os.path.isdir(FRONTEND_DIST):
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """SPA fallback so /admin and client routes serve index.html."""
+        if full_path.startswith("api/") or full_path.startswith("uploads/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        candidate = os.path.normpath(os.path.join(FRONTEND_DIST, full_path))
+        if not candidate.startswith(os.path.abspath(FRONTEND_DIST)):
+            raise HTTPException(status_code=404, detail="Not found")
+        if os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
 
 
 if __name__ == "__main__":
