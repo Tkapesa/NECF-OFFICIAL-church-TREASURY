@@ -19,6 +19,7 @@ from fastapi_jwt_auth import AuthJWT
 from pydantic import BaseModel
 import os
 import re
+from typing import Optional
 from fastapi.responses import FileResponse
 
 from database import get_db, init_db
