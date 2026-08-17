@@ -8,6 +8,8 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    ports:
+      - "8088:8000"
     environment:
       PORT: "8000"
       SERVE_FRONTEND: "1"
