@@ -65,13 +65,28 @@ brew install tesseract
 
 # Ubuntu/Debian
 sudo apt update
-sudo apt install tesseract-ocr
+sudo apt install tesseract-ocr tesseract-ocr-eng tesseract-ocr-tur
 
 # Windows
 # Download installer from:
 # https://github.com/UB-Mannheim/tesseract/wiki
-# Add to PATH after installation
+# Ensure eng.traineddata and tur.traineddata are in Tesseract's tessdata folder
+# Add Tesseract to PATH, or set TESSERACT_CMD to the full tesseract.exe path
+
+# Verify the installed OCR languages (eng and tur should be listed)
+tesseract --list-langs
 ```
+
+Configure the backend to recognize English and Turkish receipts. In PowerShell:
+
+```powershell
+$env:OCR_LANGUAGES = 'eng+tur'
+$env:TESSERACT_CMD = 'C:\Program Files\Tesseract-OCR\tesseract.exe'
+```
+
+On macOS/Linux, set `OCR_LANGUAGES=eng+tur` in the backend environment.
+
+Receipt uploads support images and PDF files up to 5 MB; PDFs may contain up to five pages. Searchable PDFs use their embedded text, while scanned PDFs need Tesseract for OCR.
 
 ### Optional Tools
 - **Git** - For version control

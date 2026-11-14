@@ -34,7 +34,12 @@ import SendIcon from '@mui/icons-material/Send';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import CloseIcon from '@mui/icons-material/Close';
 import FlipCameraAndroidIcon from '@mui/icons-material/FlipCameraAndroid';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import api from '../api';
+import { formatReceiptAmount, formatReceiptDate } from '../utils/receiptFormatting';
+
+const isPdfFile = (file) =>
+  file?.type === 'application/pdf' || file?.name?.toLowerCase().endsWith('.pdf');
 
 export default function ReceiptUploadForm() {
   const [formData, setFormData] = useState({
@@ -177,15 +182,16 @@ export default function ReceiptUploadForm() {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      const isPdf = isPdfFile(file);
+
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        setMessage({ type: 'error', text: 'Image size must be less than 5MB' });
+        setMessage({ type: 'error', text: 'Receipt files must be 5 MB or smaller' });
         return;
       }
       
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        setMessage({ type: 'error', text: 'Please upload a valid image file' });
+      if (!isPdf && !file.type.startsWith('image/')) {
+        setMessage({ type: 'error', text: 'Please upload a valid image or PDF file' });
         return;
       }
       
@@ -233,10 +239,18 @@ export default function ReceiptUploadForm() {
       }
 
       const ocr = payload.ocr_data || {};
-      const ocrBits = [ocr.ocr_price, ocr.ocr_date, ocr.ocr_time].filter(Boolean);
+      const ocrBits = [
+        ocr.ocr_price !== null && ocr.ocr_price !== undefined
+          ? formatReceiptAmount(ocr.ocr_price)
+          : null,
+        ocr.ocr_date ? formatReceiptDate(ocr.ocr_date) : null,
+        ocr.ocr_time || null,
+      ].filter(Boolean);
       const ocrNote = ocrBits.length
-        ? ` OCR detected: ${ocrBits.join(', ')}.`
-        : '';
+        ? ` OCR detected: ${ocrBits.join(', ')}.${ocrBits.length < 3 ? ' Review any missing values in the admin dashboard.' : ''}`
+        : String(ocr.ocr_raw_text || '').startsWith('OCR unavailable:')
+          ? ' OCR is not available on the server. The image was saved for manual review.'
+          : ' OCR could not detect price, date, or time. The image was saved for manual review.';
 
       setMessage({
         type: 'success',
@@ -269,9 +283,9 @@ export default function ReceiptUploadForm() {
         borderRadius: { xs: 3, md: 4 },
         overflow: 'hidden',
         border: '1px solid',
-        borderColor: 'divider',
-        background: 'linear-gradient(to bottom, #ffffff 0%, #fafafa 100%)',
-        boxShadow: '0 14px 40px rgba(20, 20, 20, 0.08)',
+        borderColor: 'rgba(33, 28, 25, 0.12)',
+        background: '#ffffff',
+        boxShadow: '0 20px 60px rgba(33, 28, 25, 0.08)',
         position: 'relative',
         '&:before': {
           content: '""',
@@ -279,47 +293,42 @@ export default function ReceiptUploadForm() {
           top: 0,
           left: 0,
           right: 0,
-          height: 4,
-          background: 'linear-gradient(90deg, #6B1C23 0%, #8B2B35 50%, #4A0E13 100%)',
-        },
-        transition: 'transform 0.35s ease, box-shadow 0.35s ease',
-        '&:hover': {
-          transform: 'translateY(-3px)',
-          boxShadow: '0 18px 48px rgba(20, 20, 20, 0.12)',
+          height: 3,
+          background: 'linear-gradient(90deg, #6B1C23 0%, #8B2B35 50%, #6B1C23 100%)',
         },
       }}
     >
       {/* Header Section */}
       <Box 
         sx={{ 
-          background: 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%), radial-gradient(120px 120px at 90% 10%, rgba(255,255,255,0.15), rgba(255,255,255,0) 70%)',
-          color: 'white',
+          background: '#f1eee8',
+          color: '#211c19',
           p: { xs: 3, sm: 3.5, md: 4 },
           position: 'relative',
           overflow: 'hidden',
-          textShadow: '0 2px 6px rgba(0,0,0,0.25)',
+          borderBottom: '1px solid rgba(33, 28, 25, 0.08)',
         }}
       >
         <Box
           sx={{
             position: 'absolute',
-            top: -50,
-            right: -50,
-            width: { xs: 150, sm: 200 },
-            height: { xs: 150, sm: 200 },
+            top: -60,
+            right: -60,
+            width: { xs: 140, sm: 180 },
+            height: { xs: 140, sm: 180 },
             borderRadius: '50%',
-            bgcolor: 'rgba(255,255,255,0.1)',
+            bgcolor: 'rgba(107, 28, 35, 0.045)',
           }}
         />
         <Box
           sx={{
             position: 'absolute',
-            bottom: -30,
-            left: -30,
-            width: { xs: 100, sm: 150 },
-            height: { xs: 100, sm: 150 },
+            bottom: -50,
+            left: -50,
+            width: { xs: 100, sm: 130 },
+            height: { xs: 100, sm: 130 },
             borderRadius: '50%',
-            bgcolor: 'rgba(255,255,255,0.05)',
+            bgcolor: 'rgba(107, 28, 35, 0.035)',
           }}
         />
         
@@ -327,7 +336,8 @@ export default function ReceiptUploadForm() {
           <Stack direction="row" spacing={{ xs: 1.5, sm: 2 }} alignItems="center" sx={{ mb: 1 }}>
             <Box 
               sx={{ 
-                bgcolor: 'rgba(255,255,255,0.2)', 
+                bgcolor: 'rgba(107, 28, 35, 0.09)',
+                color: '#6B1C23',
                 p: { xs: 1, sm: 1.5 },
                 borderRadius: 2,
                 display: 'flex'
@@ -346,7 +356,7 @@ export default function ReceiptUploadForm() {
               <Typography 
                 variant="body2" 
                 sx={{ 
-                  opacity: 0.9,
+                  color: '#625a54',
                   fontSize: { xs: '0.75rem', sm: '0.85rem', md: '0.875rem' },
                 }}
               >
@@ -488,11 +498,11 @@ export default function ReceiptUploadForm() {
                   transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 }}
               >
-                {image ? 'Change Image' : 'Upload from Gallery'}
+                {image ? 'Change File' : 'Upload Image or PDF'}
                 <input
                   type="file"
                   hidden
-                  accept="image/*"
+                  accept="image/*,.pdf,application/pdf"
                   onChange={handleImageChange}
                 />
               </Button>
@@ -531,7 +541,7 @@ export default function ReceiptUploadForm() {
               sx={{ mt: { xs: 1.5, sm: 2 }, justifyContent: 'center' }}
             >
               <Chip
-                label="JPG, PNG • Max 5MB"
+                label="Images or PDF • Max 5 MB; PDF up to 5 pages"
                 size="small"
                 variant="outlined"
                 sx={{ fontSize: '0.72rem', borderColor: 'rgba(107, 28, 35, 0.3)' }}
@@ -544,8 +554,8 @@ export default function ReceiptUploadForm() {
               />
             </Stack>
 
-            {imagePreview && (
-              <Fade in={!!imagePreview}>
+            {image && (
+              <Fade in={!!image}>
                 <Box 
                   sx={{ 
                     textAlign: 'center',
@@ -562,19 +572,28 @@ export default function ReceiptUploadForm() {
                     },
                   }}
                 >
-                  <img
-                    src={imagePreview}
-                    alt="Receipt Preview"
-                    style={{ 
-                      maxWidth: '100%', 
-                      maxHeight: 300, 
-                      borderRadius: 12,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                    }}
-                  />
+                  {isPdfFile(image) ? (
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
+                      <PictureAsPdfIcon color="error" />
+                      <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+                        {image.name}
+                      </Typography>
+                    </Stack>
+                  ) : (
+                    <img
+                      src={imagePreview}
+                      alt="Receipt Preview"
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: 300,
+                        borderRadius: 12,
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                      }}
+                    />
+                  )}
                   <Chip 
-                    icon={<CheckCircleIcon />}
-                    label="Image Uploaded" 
+                    icon={isPdfFile(image) ? <PictureAsPdfIcon /> : <CheckCircleIcon />}
+                    label={isPdfFile(image) ? 'PDF selected' : 'Image uploaded'}
                     color="success"
                     size="small"
                     sx={{ 

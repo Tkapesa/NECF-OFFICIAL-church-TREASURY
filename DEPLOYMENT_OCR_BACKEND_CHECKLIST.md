@@ -45,9 +45,11 @@ OCR uses pytesseract. The host must have Tesseract installed.
 - `tesseract --version`
 
 If missing, install for your server OS:
-- Ubuntu/Debian: `sudo apt-get update && sudo apt-get install -y tesseract-ocr`
+- Ubuntu/Debian: `sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-tur`
 - CentOS/RHEL: `sudo yum install -y tesseract`
 - macOS: `brew install tesseract`
+- Verify Turkish data is installed with `tesseract --list-langs` (look for both `eng` and `tur`).
+- Configure `OCR_LANGUAGES=eng+tur`; set `TESSERACT_CMD` if the executable is not on `PATH`.
 
 **Verify Python OCR libraries**
 - `pip show pytesseract`

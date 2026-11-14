@@ -17,6 +17,8 @@ services:
         generateValue: true
       - key: PORT
         value: 8000
+      - key: OCR_LANGUAGES
+        value: eng+tur
       - key: SERVE_FRONTEND
         value: 0
       - key: CORS_ORIGINS

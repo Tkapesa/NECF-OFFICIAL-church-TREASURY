@@ -2,6 +2,7 @@
 FastAPI backend for Church Treasury System
 """
 import sys
+import logging
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -24,7 +25,15 @@ from fastapi.responses import FileResponse
 
 from database import get_db, init_db
 from models import Receipt, Admin
-from ocr_utils import extract_receipt_data
+from ocr_utils import (
+    extract_receipt_data,
+    get_available_ocr_languages,
+    render_pdf_preview,
+    validate_pdf_bytes,
+)
+
+logger = logging.getLogger(__name__)
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 # JWT Configuration
 class Settings(BaseModel):
@@ -95,6 +104,9 @@ else:
         "http://localhost:5173",  # Vite default port
         "http://localhost:5174",  # Vite alternate port
         "http://localhost:5175",  # Vite alternate port
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
         "https://necftreausry.com",  # Production domain (HTTPS)
         "http://necftreausry.com",   # Production domain (HTTP fallback)
         "https://www.necftreausry.com",  # Production with www
@@ -159,9 +171,22 @@ def startup_event():
                               capture_output=True, text=True, timeout=5, shell=False)
         version_line = (result.stdout or result.stderr).split('\n')[0]
         print(f"✓ Tesseract OCR: {version_line}")
+        installed_languages = {
+            language.strip()
+            for language in get_available_ocr_languages()
+            if language.strip()
+        }
+        missing_languages = {'eng', 'tur'} - installed_languages
+        if missing_languages:
+            print(
+                "⚠️  Tesseract language data missing: "
+                + ", ".join(sorted(missing_languages))
+            )
+        else:
+            print("✓ Tesseract languages: eng, tur")
     except Exception as e:
         print(f"⚠️  Tesseract OCR: NOT FOUND - {str(e)}")
-        print("   OCR functionality will not work!")
+        print("   OCR unavailable; install Tesseract with eng and tur language data.")
     
     # 3. Database verification
     db_url = os.getenv("DATABASE_URL", "").strip() or "sqlite:///./treasury.db"
@@ -460,6 +485,10 @@ def _receipt_image_url(request: Request, receipt_id: int) -> str:
     return f"{_public_base_url(request)}/api/receipts/{receipt_id}/image"
 
 
+def _receipt_preview_url(request: Request, receipt_id: int) -> str:
+    return f"{_public_base_url(request)}/api/receipts/{receipt_id}/preview"
+
+
 @app.post("/api/receipts/upload")
 async def upload_receipt(
     image: UploadFile = File(...),
@@ -471,20 +500,31 @@ async def upload_receipt(
 ):
     """User endpoint to upload receipt"""
     
-    # Validate file type
-    if not image.content_type or not image.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Only image files allowed")
+    filename = os.path.basename(image.filename or "receipt")
+    content_type = (image.content_type or "").lower()
+    is_pdf = content_type == "application/pdf" or filename.lower().endswith(".pdf")
+    if not is_pdf and not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image or PDF files are allowed")
     
-    # Read bytes once — persist in DB + write temp file for OCR
-    image_bytes = await image.read()
+    image_bytes = await image.read(MAX_UPLOAD_BYTES + 1)
     if not image_bytes:
-        raise HTTPException(status_code=400, detail="Empty image file")
+        raise HTTPException(status_code=400, detail="Empty receipt file")
+    if len(image_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Receipt files must be 5 MB or smaller")
+    if is_pdf:
+        if b"%PDF-" not in image_bytes[:1024]:
+            raise HTTPException(status_code=400, detail="The uploaded PDF file is invalid")
+        try:
+            validate_pdf_bytes(image_bytes)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     os.makedirs("uploads", exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_name = os.path.basename(image.filename or "receipt.jpg")
+    safe_name = filename
     filename = f"{timestamp}_{safe_name}"
     file_path = f"uploads/{filename}"
+    stored_content_type = "application/pdf" if is_pdf else content_type
 
     try:
         with open(file_path, "wb") as buffer:
@@ -499,7 +539,7 @@ async def upload_receipt(
             approved_by=approved_by,
             image_path=file_path,
             image_data=image_bytes,
-            image_content_type=image.content_type or "image/jpeg",
+            image_content_type=stored_content_type,
             **ocr_data
         )
 
@@ -559,6 +599,41 @@ def get_receipt_image(receipt_id: int, db: Session = Depends(get_db)):
     raise HTTPException(status_code=404, detail="Receipt image not found")
 
 
+@app.get("/api/receipts/{receipt_id}/preview")
+def get_receipt_preview(receipt_id: int, db: Session = Depends(get_db)):
+    """Serve the first PDF page as a thumbnail, or the original image."""
+    receipt = db.query(Receipt).filter(Receipt.id == receipt_id).first()
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    if receipt.image_data:
+        image_bytes = bytes(receipt.image_data)
+    elif receipt.image_path and os.path.exists(receipt.image_path):
+        with open(receipt.image_path, "rb") as image_file:
+            image_bytes = image_file.read()
+    else:
+        raise HTTPException(status_code=404, detail="Receipt image not found")
+
+    if receipt.image_content_type == "application/pdf":
+        try:
+            image_bytes = render_pdf_preview(image_bytes)
+        except Exception as error:
+            logger.exception("Unable to render PDF preview for receipt %s", receipt_id)
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unable to render receipt PDF preview: {error}",
+            ) from error
+        content_type = "image/png"
+    else:
+        content_type = receipt.image_content_type or "image/jpeg"
+
+    return Response(
+        content=image_bytes,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @app.get("/api/receipts")
 def get_receipts(request: Request, db: Session = Depends(get_db), Authorize: AuthJWT = Depends()):
     """Admin endpoint to get all receipts"""
@@ -586,8 +661,10 @@ def get_receipts(request: Request, db: Session = Depends(get_db), Authorize: Aut
                     "ocr_date": r.ocr_date,
                     "ocr_time": r.ocr_time,
                     "ocr_raw_text": r.ocr_raw_text,
+                    "image_content_type": r.image_content_type,
                     # Stable API URL — works even when local uploads/ is wiped on Render
                     "image_path": _receipt_image_url(request, r.id),
+                    "image_preview_path": _receipt_preview_url(request, r.id),
                     "created_at": r.created_at.isoformat() if r.created_at else None
                 }
                 for r in receipts

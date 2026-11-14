@@ -46,7 +46,9 @@ import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import CloseIcon from '@mui/icons-material/Close';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import DeleteIcon from '@mui/icons-material/Delete';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import api from '../api';
+import { formatReceiptAmount, formatReceiptDate } from '../utils/receiptFormatting';
 
 export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
   const theme = useTheme();
@@ -58,7 +60,12 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
   const [menuAnchor, setMenuAnchor] = useState(null);
   const [menuReceiptId, setMenuReceiptId] = useState(null);
   const [expandedRows, setExpandedRows] = useState([]);
-  const [imagePreview, setImagePreview] = useState({ open: false, url: '', title: '' });
+  const [imagePreview, setImagePreview] = useState({
+    open: false,
+    url: '',
+    title: '',
+    contentType: '',
+  });
 
   const handleEdit = (receipt) => {
     setEditingId(receipt.id);
@@ -67,7 +74,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
       user_phone: receipt.user_phone || '',
       item_bought: receipt.item_bought || '',
       approved_by: receipt.approved_by || '',
-      ocr_price: receipt.ocr_price || '',
+      ocr_price: receipt.ocr_price ?? '',
       ocr_date: receipt.ocr_date || '',
       ocr_time: receipt.ocr_time || '',
     });
@@ -141,9 +148,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return '--';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+    return formatReceiptDate(dateString);
   };
 
   const toggleRowExpansion = (id) => {
@@ -152,12 +157,12 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
     );
   };
 
-  const handleImagePreview = (url, title) => {
-    setImagePreview({ open: true, url, title });
+  const handleImagePreview = (url, title, contentType) => {
+    setImagePreview({ open: true, url, title, contentType });
   };
 
   const closeImagePreview = () => {
-    setImagePreview({ open: false, url: '', title: '' });
+    setImagePreview({ open: false, url: '', title: '', contentType: '' });
   };
 
   const handleDelete = async (receiptId) => {
@@ -211,7 +216,16 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
 
   if (receipts.length === 0) {
     return (
-      <Paper sx={{ p: 8, textAlign: 'center', bgcolor: 'white' }}>
+      <Paper
+        sx={{
+          p: { xs: 4, sm: 8 },
+          textAlign: 'center',
+          bgcolor: darkMode ? '#171a21' : '#fffdfa',
+          border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(107,28,35,0.12)',
+          borderRadius: 4,
+          boxShadow: '0 12px 32px rgba(33,28,25,0.04)',
+        }}
+      >
         <ReceiptLongIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
         <Typography variant="h6" color="text.secondary" gutterBottom>
           No receipts found
@@ -237,10 +251,12 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
               sx={{
                 mb: 2,
                 borderRadius: 3,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                bgcolor: darkMode ? '#171a21' : '#fffdfa',
+                border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(107,28,35,0.12)',
+                boxShadow: '0 8px 24px rgba(33,28,25,0.045)',
                 transition: 'all 0.3s ease',
                 '&:hover': {
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  boxShadow: '0 14px 30px rgba(33,28,25,0.09)',
                   transform: 'translateY(-2px)',
                 },
               }}
@@ -249,7 +265,9 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 {/* Header with Image and Title */}
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2, gap: 2 }}>
                   <Avatar
-                    src={receipt.image_path}
+                    src={receipt.image_preview_path || (
+                      receipt.image_content_type === 'application/pdf' ? undefined : receipt.image_path
+                    )}
                     variant="rounded"
                     sx={{
                       width: 60,
@@ -258,9 +276,15 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                       border: '2px solid #e0e0e0',
                       flexShrink: 0,
                     }}
-                    onClick={() => handleImagePreview(receipt.image_path, receipt.item_bought)}
+                    onClick={() => handleImagePreview(
+                      receipt.image_path,
+                      receipt.item_bought,
+                      receipt.image_content_type,
+                    )}
                   >
-                    <ReceiptLongIcon />
+                    {receipt.image_content_type === 'application/pdf'
+                      ? <PictureAsPdfIcon />
+                      : <ReceiptLongIcon />}
                   </Avatar>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     {isEditing ? (
@@ -320,7 +344,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                       />
                     ) : (
                       <Typography variant="body1" fontWeight={600} color="#6B1C23">
-                        ₺{receipt.ocr_price || '0.00'}
+                        {formatReceiptAmount(receipt.ocr_price)}
                       </Typography>
                     )}
                   </Grid>
@@ -341,7 +365,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                       />
                     ) : (
                       <Typography variant="body2" fontWeight={500}>
-                        {receipt.ocr_date || formatDate(receipt.created_at)}
+                        {receipt.ocr_date ? formatDate(receipt.ocr_date) : 'Not detected'}
                       </Typography>
                     )}
                   </Grid>
@@ -450,7 +474,11 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                             size="small"
                             fullWidth
                             startIcon={<ZoomInIcon />}
-                            onClick={() => handleImagePreview(receipt.image_path, receipt.item_bought)}
+                            onClick={() => handleImagePreview(
+                              receipt.image_path,
+                              receipt.item_bought,
+                              receipt.image_content_type,
+                            )}
                             sx={{ mt: 1 }}
                           >
                             View Receipt Image
@@ -604,16 +632,24 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
               alignItems: 'center',
               p: 2,
             }}>
-              <img
-                src={imagePreview.url}
-                alt={imagePreview.title}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  objectFit: 'contain',
-                  borderRadius: '8px',
-                }}
-              />
+              {imagePreview.contentType === 'application/pdf' ? (
+                <iframe
+                  src={imagePreview.url}
+                  title={imagePreview.title || 'Receipt PDF preview'}
+                  style={{ width: '100%', height: '100%', border: 0 }}
+                />
+              ) : (
+                <img
+                  src={imagePreview.url}
+                  alt={imagePreview.title}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                    borderRadius: '8px',
+                  }}
+                />
+              )}
             </Box>
           </DialogContent>
         </Dialog>
@@ -628,11 +664,11 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
       elevation={4} 
       sx={{ 
         width: '100%', 
-        bgcolor: darkMode ? '#171a21' : 'white', 
-        borderRadius: 3,
+        bgcolor: darkMode ? '#171a21' : '#fffdfa',
+        borderRadius: 4,
         overflow: 'hidden',
-        border: darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(15,17,21,0.06)',
-        boxShadow: '0 18px 40px rgba(15, 17, 21, 0.08)',
+        border: darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(107,28,35,0.12)',
+        boxShadow: '0 12px 32px rgba(33,28,25,0.045)',
         animation: 'fadeIn 0.8s ease-out',
         '@keyframes fadeIn': {
           from: { opacity: 0, transform: 'translateY(20px)' },
@@ -672,8 +708,8 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
       )}
 
       <TableContainer sx={{
-        bgcolor: darkMode ? '#171a21' : 'white',
-        borderRadius: 12,
+        bgcolor: darkMode ? '#171a21' : '#fffdfa',
+        borderRadius: 4,
         p: 1,
         '&::-webkit-scrollbar': {
           height: '8px',
@@ -693,11 +729,11 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
         <Table sx={{ minWidth: 650 }}>
           <TableHead>
             <TableRow sx={{ 
-              bgcolor: darkMode ? '#20242d' : '#f8fafc',
+              bgcolor: darkMode ? '#20242d' : '#f4eee8',
               borderBottom: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(15,17,21,0.06)',
             }}>
-              <TableCell padding="checkbox" sx={{ bgcolor: darkMode ? '#20242d' : '#f8fafc' }} />
-              <TableCell padding="checkbox" sx={{ bgcolor: darkMode ? '#20242d' : '#f8fafc' }}>
+              <TableCell padding="checkbox" sx={{ bgcolor: darkMode ? '#20242d' : '#f4eee8' }} />
+              <TableCell padding="checkbox" sx={{ bgcolor: darkMode ? '#20242d' : '#f4eee8' }}>
                 <Checkbox
                   indeterminate={selectedReceipts.length > 0 && selectedReceipts.length < receipts.length}
                   checked={receipts.length > 0 && selectedReceipts.length === receipts.length}
@@ -715,7 +751,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#20242d' : '#f8fafc',
+                bgcolor: darkMode ? '#20242d' : '#f4eee8',
               }}>
                 Name / Receipt
               </TableCell>
@@ -725,7 +761,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#20242d' : '#f8fafc',
+                bgcolor: darkMode ? '#20242d' : '#f4eee8',
               }}>
                 Submitted By
               </TableCell>
@@ -735,7 +771,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#20242d' : '#f8fafc',
+                bgcolor: darkMode ? '#20242d' : '#f4eee8',
               }}>
                 Date
               </TableCell>
@@ -745,7 +781,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#20242d' : '#f8fafc',
+                bgcolor: darkMode ? '#20242d' : '#f4eee8',
               }}>
                 Amount
               </TableCell>
@@ -755,7 +791,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#20242d' : '#f8fafc',
+                bgcolor: darkMode ? '#20242d' : '#f4eee8',
               }}>
                 Status
               </TableCell>
@@ -765,7 +801,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                 fontSize: '0.875rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                bgcolor: darkMode ? '#20242d' : '#f8fafc',
+                bgcolor: darkMode ? '#20242d' : '#f4eee8',
               }}>
                 Actions
               </TableCell>
@@ -839,7 +875,9 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                       ) : (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <Avatar
-                            src={receipt.image_path}
+                            src={receipt.image_preview_path || (
+                              receipt.image_content_type === 'application/pdf' ? undefined : receipt.image_path
+                            )}
                             variant="rounded"
                             sx={{ 
                               width: 48, 
@@ -854,9 +892,15 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                                   borderColor: '#6B1C23',
                                 },
                             }}
-                            onClick={() => handleImagePreview(receipt.image_path, receipt.item_bought)}
+                            onClick={() => handleImagePreview(
+                              receipt.image_path,
+                              receipt.item_bought,
+                              receipt.image_content_type,
+                            )}
                         >
-                          <ReceiptLongIcon />
+                          {receipt.image_content_type === 'application/pdf'
+                            ? <PictureAsPdfIcon />
+                            : <ReceiptLongIcon />}
                         </Avatar>
                         <Typography variant="body2" fontWeight={500} sx={{ color: darkMode ? '#ddd' : 'inherit' }}>
                           {receipt.item_bought || 'Receipt'}
@@ -909,7 +953,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                     ) : (
                       <Box>
                         <Typography variant="body2" sx={{ color: darkMode ? '#ddd' : 'inherit' }}>
-                          {receipt.ocr_date || formatDate(receipt.created_at)}
+                          {receipt.ocr_date ? formatDate(receipt.ocr_date) : 'Not detected'}
                         </Typography>
                         {receipt.ocr_time && (
                           <Typography variant="caption" color="text.secondary" sx={{ color: darkMode ? '#888' : 'inherit' }}>
@@ -933,7 +977,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                       />
                     ) : (
                       <Typography variant="body2" fontWeight={500} sx={{ color: darkMode ? '#ddd' : 'inherit' }}>
-                        ₺{receipt.ocr_price || '0.00'}
+                        {formatReceiptAmount(receipt.ocr_price)}
                       </Typography>
                     )}
                   </TableCell>
@@ -1082,7 +1126,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                                     Amount
                                   </Typography>
                                   <Typography variant="body2" fontWeight={500} sx={{ color: darkMode ? '#ddd' : 'inherit' }}>
-                                    ₺{receipt.ocr_price || '0.00'}
+                                    {formatReceiptAmount(receipt.ocr_price)}
                                   </Typography>
                                 </Box>
                                 <Box>
@@ -1090,7 +1134,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                                     Date & Time
                                   </Typography>
                                   <Typography variant="body2" fontWeight={500} sx={{ color: darkMode ? '#ddd' : 'inherit' }}>
-                                    {receipt.ocr_date || formatDate(receipt.created_at)} {receipt.ocr_time && `at ${receipt.ocr_time}`}
+                                    {receipt.ocr_date ? formatDate(receipt.ocr_date) : 'Not detected'} {receipt.ocr_time && `at ${receipt.ocr_time}`}
                                   </Typography>
                                 </Box>
                               </Box>
@@ -1209,23 +1253,64 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                                   gap: 2,
                                 }}
                               >
-                                <img 
-                                  src={receipt.image_path} 
-                                  alt={receipt.item_bought}
-                                  style={{ 
-                                    maxWidth: '200px', 
-                                    maxHeight: '200px', 
-                                    borderRadius: '8px',
-                                    border: darkMode ? '1px solid #555' : '1px solid #e0e0e0',
-                                    cursor: 'pointer',
-                                  }}
-                                  onClick={() => handleImagePreview(receipt.image_path, receipt.item_bought)}
-                                />
+                                {receipt.image_content_type === 'application/pdf' ? (
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    <img
+                                      src={receipt.image_preview_path || receipt.image_path}
+                                      alt={`${receipt.item_bought || 'Receipt'} PDF first page`}
+                                      style={{
+                                        maxWidth: '200px',
+                                        maxHeight: '200px',
+                                        borderRadius: '8px',
+                                        border: darkMode ? '1px solid #555' : '1px solid #e0e0e0',
+                                        cursor: 'pointer',
+                                      }}
+                                      onClick={() => handleImagePreview(
+                                        receipt.image_path,
+                                        receipt.item_bought,
+                                        receipt.image_content_type,
+                                      )}
+                                    />
+                                    <Button
+                                      variant="outlined"
+                                      size="small"
+                                      startIcon={<PictureAsPdfIcon />}
+                                      onClick={() => handleImagePreview(
+                                        receipt.image_path,
+                                        receipt.item_bought,
+                                        receipt.image_content_type,
+                                      )}
+                                    >
+                                      Open PDF
+                                    </Button>
+                                  </Box>
+                                ) : (
+                                  <img
+                                    src={receipt.image_path}
+                                    alt={receipt.item_bought}
+                                    style={{
+                                      maxWidth: '200px',
+                                      maxHeight: '200px',
+                                      borderRadius: '8px',
+                                      border: darkMode ? '1px solid #555' : '1px solid #e0e0e0',
+                                      cursor: 'pointer',
+                                    }}
+                                    onClick={() => handleImagePreview(
+                                      receipt.image_path,
+                                      receipt.item_bought,
+                                      receipt.image_content_type,
+                                    )}
+                                  />
+                                )}
                                 <Button
                                   variant="outlined"
                                   size="small"
                                   startIcon={<ZoomInIcon />}
-                                  onClick={() => handleImagePreview(receipt.image_path, receipt.item_bought)}
+                                  onClick={() => handleImagePreview(
+                                    receipt.image_path,
+                                    receipt.item_bought,
+                                    receipt.image_content_type,
+                                  )}
                                   sx={{
                                     color: darkMode ? '#fff' : '#d32f2f',
                                     borderColor: darkMode ? '#fff' : '#d32f2f',

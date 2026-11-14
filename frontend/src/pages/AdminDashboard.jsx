@@ -58,6 +58,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import MenuIcon from '@mui/icons-material/Menu';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
@@ -65,8 +66,9 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import ReceiptTable from '../components/ReceiptTable';
 import AdminManagement from '../components/AdminManagement';
 import api from '../api';
+import { formatReceiptAmount, formatReceiptDate } from '../utils/receiptFormatting';
 
-const drawerWidth = 240;
+const drawerWidth = 256;
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -258,7 +260,7 @@ export default function AdminDashboard() {
       receipt.ocr_date || '',
       receipt.ocr_time || '',
       receipt.item_bought || '',
-      receipt.ocr_price || '0',
+      receipt.ocr_price ?? '',
       receipt.user_name || '',
       receipt.user_phone || '',
       receipt.approved_by ? 'Approved' : 'Pending',
@@ -486,9 +488,9 @@ export default function AdminDashboard() {
             ${filteredReceipts.map(receipt => `
               <tr>
                 <td>#${receipt.id}</td>
-                <td>${receipt.ocr_date || new Date(receipt.created_at).toLocaleDateString()}</td>
+                <td>${receipt.ocr_date ? formatReceiptDate(receipt.ocr_date) : 'Not detected'}</td>
                 <td>${receipt.item_bought || '-'}</td>
-                <td>₺${(receipt.ocr_price || 0)}</td>
+                <td>${formatReceiptAmount(receipt.ocr_price)}</td>
                 <td>${receipt.user_name || '-'}</td>
                 <td>${receipt.user_phone || '-'}</td>
                 <td>
@@ -530,27 +532,50 @@ export default function AdminDashboard() {
 
   // Ensure receipts is always an array before filtering to avoid runtime errors
   const safeReceipts = Array.isArray(receipts) ? receipts : [];
+  const hasRecognizedAmount = safeReceipts.some(
+    (receipt) =>
+      receipt &&
+      receipt.ocr_price !== null &&
+      receipt.ocr_price !== undefined &&
+      receipt.ocr_price !== '' &&
+      Number.isFinite(Number(receipt.ocr_price)),
+  );
   const filteredReceipts = safeReceipts.filter((receipt = {}) => {
     // Defensive extraction with defaults
-    const userName = (receipt.user_name || '').toLowerCase();
-    const itemBought = (receipt.item_bought || '').toLowerCase();
-    const phone = receipt.user_phone || '';
+    const userName = String(receipt.user_name || '').toLowerCase();
+    const itemBought = String(receipt.item_bought || '').toLowerCase();
+    const phone = String(receipt.user_phone || '');
     const query = searchQuery.toLowerCase();
 
     const matchesSearch =
-      (userName && userName.includes(query)) ||
-      (itemBought && itemBought.includes(query)) ||
-      (phone && phone.includes(searchQuery));
+      !query ||
+      userName.includes(query) ||
+      itemBought.includes(query) ||
+      phone.includes(searchQuery);
 
     // Status filter logic with defensive checks
     const approved = !!(receipt.approved_by && receipt.approved_by !== 'Pending');
     const pending = !receipt.approved_by || receipt.approved_by === 'Pending';
+    const categoryStatus =
+      selectedCategory === 'Approved'
+        ? 'approved'
+        : selectedCategory === 'Pending'
+        ? 'pending'
+        : 'all';
     const matchesStatus =
-      statusFilter === 'all' ||
-      (statusFilter === 'approved' && approved) ||
-      (statusFilter === 'pending' && pending);
+      (statusFilter === 'all' ||
+        (statusFilter === 'approved' && approved) ||
+        (statusFilter === 'pending' && pending)) &&
+      (categoryStatus === 'all' ||
+        (categoryStatus === 'approved' && approved) ||
+        (categoryStatus === 'pending' && pending));
 
     return matchesSearch && matchesStatus;
+  }).sort((left, right) => {
+    if (selectedCategory !== 'Recent') return 0;
+    const timestamp = (receipt) =>
+      Date.parse(receipt.created_at || '') || Number(receipt.id) || 0;
+    return timestamp(right) - timestamp(left);
   });
 
   // Calculate statistics
@@ -592,36 +617,368 @@ export default function AdminDashboard() {
     }
   }, [loading, isAuthenticated, stats.total, stats.totalAmount, stats.approved, stats.pending]);
 
+  if (!isAuthenticated) {
+    return (
+      <Box
+        component="main"
+        sx={{
+          position: 'relative',
+          minHeight: '100svh',
+          overflow: 'hidden',
+          bgcolor: '#f6f4f0',
+          color: '#211c19',
+        }}
+      >
+        <Box
+          component="header"
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+            maxWidth: 1440,
+            mx: 'auto',
+            px: { xs: 2.5, sm: 5, lg: 9 },
+            py: { xs: 2, sm: 3 },
+            borderBottom: '1px solid rgba(33,28,25,0.1)',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box
+              component="img"
+              src="/necf-logo.png"
+              alt="NECF logo"
+              sx={{ width: { xs: 40, sm: 48 }, height: { xs: 40, sm: 48 }, objectFit: 'contain' }}
+            />
+            <Box>
+              <Typography sx={{ fontWeight: 700, letterSpacing: '-0.03em', fontSize: { xs: '0.85rem', sm: '1rem' } }}>
+                Near East Christian Fellowship
+              </Typography>
+              <Typography
+                sx={{
+                  mt: 0.25,
+                  color: '#6b1c23',
+                  fontSize: '0.62rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.17em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Treasury management
+              </Typography>
+            </Box>
+          </Box>
+          <Button
+            onClick={() => navigate('/')}
+            startIcon={<ArrowBackRounded />}
+            sx={{
+              flexShrink: 0,
+              minWidth: 0,
+              border: '1px solid rgba(33,28,25,0.15)',
+              borderRadius: 999,
+              px: { xs: 1.5, sm: 2.25 },
+              py: 1,
+              color: '#211c19',
+              bgcolor: 'rgba(255,255,255,0.7)',
+              textTransform: 'none',
+              '&:hover': { borderColor: 'rgba(107,28,35,0.4)', bgcolor: '#fffdfa' },
+            }}
+          >
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Back to home</Box>
+            <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>Home</Box>
+          </Button>
+        </Box>
+
+        <Box
+          sx={{
+            position: 'relative',
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', lg: 'minmax(0,1.1fr) minmax(360px,0.72fr)' },
+            alignItems: 'center',
+            gap: { xs: 5, md: 8, lg: 12 },
+            gridTemplateAreas: { xs: '"login" "intro"', lg: '"intro login"' },
+            maxWidth: 1440,
+            minHeight: { lg: 'calc(100svh - 105px)' },
+            mx: 'auto',
+            px: { xs: 2.5, sm: 5, lg: 9 },
+            py: { xs: 6, sm: 8, lg: 10 },
+          }}
+        >
+          <Typography
+            aria-hidden="true"
+            sx={{
+              position: 'absolute',
+              right: { xs: '-0.03em', lg: '36%' },
+              bottom: '-0.2em',
+              color: '#6b1c23',
+              fontSize: 'clamp(14rem, 34vw, 36rem)',
+              fontWeight: 600,
+              lineHeight: 0.8,
+              letterSpacing: '-0.09em',
+              opacity: 0.055,
+              pointerEvents: 'none',
+              userSelect: 'none',
+            }}
+          >
+            03
+          </Typography>
+
+          <Box sx={{ gridArea: 'intro', position: 'relative', zIndex: 1, maxWidth: 700 }}>
+            <Typography
+              sx={{
+                mb: 2.5,
+                color: '#6b1c23',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                letterSpacing: '0.22em',
+                textTransform: 'uppercase',
+              }}
+            >
+              NECF / Treasury / Administration
+            </Typography>
+            <Typography
+              component="h1"
+              sx={{
+                maxWidth: 700,
+                fontSize: 'clamp(3.2rem, 7.4vw, 7.2rem)',
+                fontWeight: 500,
+                lineHeight: 0.94,
+                letterSpacing: '-0.075em',
+              }}
+            >
+              Stewardship,
+              <br />
+              made clear.
+            </Typography>
+            <Typography
+              sx={{
+                mt: 3,
+                maxWidth: 540,
+                color: '#514a45',
+                fontSize: { xs: '1rem', sm: '1.15rem' },
+                lineHeight: 1.75,
+              }}
+            >
+              A considered workspace for reviewing receipt submissions and caring
+              for church treasury records.
+            </Typography>
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: { xs: 2.5, sm: 4 },
+                mt: { xs: 4, sm: 6 },
+                pt: 2.5,
+                borderTop: '1px solid rgba(33,28,25,0.12)',
+              }}
+            >
+              {[
+                ['01', 'Review submissions'],
+                ['02', 'Verify details'],
+                ['03', 'Keep records clear'],
+              ].map(([number, label]) => (
+                <Box key={number}>
+                  <Typography sx={{ color: '#6b1c23', fontSize: '0.68rem', fontWeight: 700 }}>
+                    {number}
+                  </Typography>
+                  <Typography sx={{ mt: 0.5, fontSize: '0.82rem', fontWeight: 600 }}>
+                    {label}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+
+          <Paper
+            component="form"
+            onSubmit={handleLogin}
+            elevation={0}
+            sx={{
+              gridArea: 'login',
+              position: 'relative',
+              zIndex: 1,
+              width: '100%',
+              maxWidth: 480,
+              justifySelf: { lg: 'end' },
+              p: { xs: 3, sm: 4.5 },
+              border: '1px solid rgba(33,28,25,0.1)',
+              borderRadius: { xs: 3, sm: 4 },
+              bgcolor: '#fffdfa',
+              boxShadow: '0 28px 80px rgba(33,28,25,0.09)',
+            }}
+          >
+            <Box
+              component="img"
+              src="/necf-logo.png"
+              alt=""
+              sx={{
+                width: 52,
+                height: 52,
+                mb: 3,
+                objectFit: 'contain',
+              }}
+            />
+            <Typography
+              sx={{
+                color: '#6b1c23',
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                letterSpacing: '0.19em',
+                textTransform: 'uppercase',
+              }}
+            >
+              Authorized administrators
+            </Typography>
+            <Typography
+              component="h2"
+              sx={{
+                mt: 1,
+                fontSize: { xs: '1.8rem', sm: '2.1rem' },
+                fontWeight: 600,
+                letterSpacing: '-0.055em',
+              }}
+            >
+              Treasury access
+            </Typography>
+            <Typography sx={{ mt: 1, mb: 3, color: '#746b64', fontSize: '0.92rem', lineHeight: 1.6 }}>
+              Sign in to review receipts and manage records.
+            </Typography>
+
+            {loginError && (
+              <Alert severity="error" sx={{ mb: 2.5, borderRadius: 2 }}>
+                {loginError}
+              </Alert>
+            )}
+
+            <TextField
+              fullWidth
+              label="Username"
+              value={credentials.username}
+              onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
+              margin="normal"
+              required
+              autoComplete="username"
+              variant="outlined"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2,
+                  bgcolor: '#fff',
+                  '& fieldset': { borderColor: 'rgba(33,28,25,0.16)' },
+                  '&:hover fieldset': { borderColor: 'rgba(107,28,35,0.5)' },
+                  '&.Mui-focused fieldset': { borderColor: '#6b1c23' },
+                },
+                '& .MuiInputLabel-root.Mui-focused': { color: '#6b1c23' },
+              }}
+            />
+            <TextField
+              fullWidth
+              label="Password"
+              type="password"
+              value={credentials.password}
+              onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
+              margin="normal"
+              required
+              autoComplete="current-password"
+              variant="outlined"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2,
+                  bgcolor: '#fff',
+                  '& fieldset': { borderColor: 'rgba(33,28,25,0.16)' },
+                  '&:hover fieldset': { borderColor: 'rgba(107,28,35,0.5)' },
+                  '&.Mui-focused fieldset': { borderColor: '#6b1c23' },
+                },
+                '& .MuiInputLabel-root.Mui-focused': { color: '#6b1c23' },
+              }}
+            />
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              size="large"
+              sx={{
+                mt: 2.5,
+                py: 1.5,
+                borderRadius: 999,
+                bgcolor: '#6b1c23',
+                fontWeight: 700,
+                textTransform: 'none',
+                boxShadow: 'none',
+                '&:hover': { bgcolor: '#4a0e13', boxShadow: '0 10px 24px rgba(107,28,35,0.18)' },
+              }}
+            >
+              Sign in to dashboard
+            </Button>
+            <Typography
+              sx={{
+                mt: 2.5,
+                pt: 2,
+                borderTop: '1px solid rgba(33,28,25,0.09)',
+                color: '#827a73',
+                fontSize: '0.73rem',
+                lineHeight: 1.6,
+              }}
+            >
+              Access is limited to authorized treasury administrators.
+            </Typography>
+          </Paper>
+        </Box>
+
+        <Box
+          component="footer"
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            maxWidth: 1440,
+            mx: 'auto',
+            px: { xs: 2.5, sm: 5, lg: 9 },
+            py: 2,
+            borderTop: '1px solid rgba(33,28,25,0.1)',
+            color: '#746b64',
+            fontSize: '0.72rem',
+          }}
+        >
+          Near East Christian Fellowship · Treasury management
+        </Box>
+      </Box>
+    );
+  }
+
   // Drawer content to be reused in both mobile and desktop drawers
   const drawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Logo */}
-      <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+      <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <div style={{
-          width: 88,
-          height: 88,
-          borderRadius: 18,
+          width: 48,
+          height: 48,
+          borderRadius: 14,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))',
-          boxShadow: '0 8px 20px rgba(15,17,21,0.35)',
+          background: 'rgba(255,255,255,0.08)',
           border: '1px solid rgba(255,255,255,0.06)'
         }}>
           <img
             src="/necf-logo.png"
             alt="NECF Logo"
             style={{
-              width: 64,
-              height: 64,
+              width: 38,
+              height: 38,
               objectFit: 'contain',
-              borderRadius: 12,
             }}
           />
         </div>
-        <Typography variant="body2" fontWeight={700} sx={{ textAlign: 'center', color: 'white', letterSpacing: 0.2 }}>
-          NECF Treasury
-        </Typography>
+        <Box>
+          <Typography variant="body2" fontWeight={700} sx={{ color: 'white', letterSpacing: '-0.02em' }}>
+            NECF Treasury
+          </Typography>
+          <Typography sx={{ mt: 0.25, color: 'rgba(255,255,255,0.62)', fontSize: '0.65rem' }}>
+            Administration
+          </Typography>
+        </Box>
       </Box>
 
       <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
@@ -635,10 +992,10 @@ export default function AdminDashboard() {
             sx={{
               borderRadius: 2,
                 '&.Mui-selected': {
-                bgcolor: 'linear-gradient(90deg, rgba(107,28,35,1), rgba(74,14,19,1))',
+                background: 'linear-gradient(90deg, #6b1c23, #4a0e13)',
                 boxShadow: '0 8px 22px rgba(75,14,19,0.28)',
                 transform: 'translateX(-2px)',
-                '&:hover': { bgcolor: 'linear-gradient(90deg, rgba(90,24,30,1), rgba(60,12,15,1))' },
+                '&:hover': { background: 'linear-gradient(90deg, #5a181e, #3c0c0f)' },
               },
             }}
           >
@@ -765,103 +1122,147 @@ export default function AdminDashboard() {
     <Box 
       sx={{ 
         display: 'flex', 
-        height: '100vh',
+        height: '100svh',
+        minHeight: '100svh',
         width: '100%',
         margin: 0,
         padding: 0,
-        bgcolor: isAuthenticated ? '#f5f5f5' : 'transparent',
-        background: !isAuthenticated 
-          ? 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 50%, #000000 100%)'
-          : '#f5f5f5',
+        bgcolor: '#f6f4f0',
+        color: '#211c19',
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      {/* Animated Background Elements - Only show when not authenticated */}
+      {/* Treasury sign-in canvas */}
       {!isAuthenticated && (
-        <>
-          {/* Floating animated circles */}
+        <Box
+          component="main"
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            overflow: 'hidden',
+            px: { xs: 2.5, sm: 5, lg: 10 },
+            py: { xs: 2.5, sm: 4 },
+            bgcolor: '#f6f4f0',
+          }}
+        >
+          <Box
+            component="header"
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 2,
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                component="img"
+                src="/necf-logo.png"
+                alt="NECF logo"
+                sx={{ width: 44, height: 44, objectFit: 'contain' }}
+              />
+              <Box>
+                <Typography sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+                  Near East Christian Fellowship
+                </Typography>
+                <Typography
+                  sx={{
+                    mt: 0.25,
+                    color: '#6b1c23',
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.17em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Treasury management
+                </Typography>
+              </Box>
+            </Box>
+            <Button
+              onClick={() => navigate('/')}
+              startIcon={<ArrowBackRounded />}
+              sx={{
+                border: '1px solid rgba(33,28,25,0.15)',
+                borderRadius: 999,
+                px: 2,
+                color: '#211c19',
+                bgcolor: 'rgba(255,255,255,0.72)',
+                textTransform: 'none',
+                '&:hover': { borderColor: 'rgba(107,28,35,0.4)', bgcolor: '#fff' },
+              }}
+            >
+              Back to home
+            </Button>
+          </Box>
+
           <Box
             sx={{
-              position: 'absolute',
-              top: '-10%',
-              right: '-5%',
-              width: '500px',
-              height: '500px',
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.05)',
-              animation: 'float 20s ease-in-out infinite',
-              '@keyframes float': {
-                '0%, 100%': { transform: 'translate(0, 0) rotate(0deg)' },
-                '33%': { transform: 'translate(30px, -30px) rotate(120deg)' },
-                '66%': { transform: 'translate(-20px, 20px) rotate(240deg)' },
-              },
+              position: 'relative',
+              mt: { xs: 8, sm: 11, lg: 13 },
+              maxWidth: 850,
             }}
-          />
-          <Box
+          >
+            <Typography
+              sx={{
+                mb: 2,
+                color: '#6b1c23',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                letterSpacing: '0.22em',
+                textTransform: 'uppercase',
+              }}
+            >
+              NECF / Treasury / Administration
+            </Typography>
+            <Typography
+              component="h1"
+              sx={{
+                maxWidth: 800,
+                fontSize: 'clamp(3rem, 8vw, 7.5rem)',
+                fontWeight: 500,
+                lineHeight: 0.94,
+                letterSpacing: '-0.075em',
+              }}
+            >
+              Stewardship,
+              <br />
+              made clear.
+            </Typography>
+            <Typography
+              sx={{
+                mt: 3,
+                maxWidth: 550,
+                color: '#514a45',
+                fontSize: { xs: '1rem', sm: '1.15rem' },
+                lineHeight: 1.7,
+              }}
+            >
+              Review receipt submissions and treasury records with care,
+              clarity, and confidence.
+            </Typography>
+          </Box>
+
+          <Typography
+            aria-hidden="true"
             sx={{
               position: 'absolute',
-              bottom: '-10%',
-              left: '-5%',
-              width: '400px',
-              height: '400px',
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.03)',
-              animation: 'float 25s ease-in-out infinite reverse',
+              right: '-0.04em',
+              bottom: '-0.2em',
+              color: '#6b1c23',
+              fontSize: 'clamp(12rem, 34vw, 34rem)',
+              fontWeight: 600,
+              lineHeight: 0.8,
+              letterSpacing: '-0.09em',
+              opacity: 0.06,
+              pointerEvents: 'none',
+              userSelect: 'none',
             }}
-          />
-          <Box
-            sx={{
-              position: 'absolute',
-              top: '20%',
-              left: '10%',
-              width: '150px',
-              height: '150px',
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.08)',
-              animation: 'pulse 8s ease-in-out infinite',
-              '@keyframes pulse': {
-                '0%, 100%': { transform: 'scale(1)', opacity: 0.08 },
-                '50%': { transform: 'scale(1.2)', opacity: 0.12 },
-              },
-            }}
-          />
-          <Box
-            sx={{
-              position: 'absolute',
-              bottom: '30%',
-              right: '15%',
-              width: '200px',
-              height: '200px',
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.06)',
-              animation: 'pulse 10s ease-in-out infinite',
-            }}
-          />
-          
-          {/* Diagonal pattern lines */}
-          <Box
-            sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundImage: `repeating-linear-gradient(
-                45deg,
-                transparent,
-                transparent 60px,
-                rgba(255, 255, 255, 0.02) 60px,
-                rgba(255, 255, 255, 0.02) 61px
-              )`,
-              animation: 'drift 30s linear infinite',
-              '@keyframes drift': {
-                '0%': { transform: 'translateX(0) translateY(0)' },
-                '100%': { transform: 'translateX(60px) translateY(60px)' },
-              },
-            }}
-          />
-        </>
+          >
+            03
+          </Typography>
+        </Box>
       )}
       
       {/* Content wrapper with higher z-index */}
@@ -882,10 +1283,10 @@ export default function AdminDashboard() {
                 '& .MuiDrawer-paper': {
                   width: drawerWidth,
                   boxSizing: 'border-box',
-                  bgcolor: '#1a1a1a',
+                  background: 'linear-gradient(180deg, #4a0e13 0%, #211c19 100%)',
                   color: 'white',
                   borderRight: 'none',
-                  height: '100vh',
+                  height: '100svh',
                   top: 0,
                 },
               }}
@@ -903,10 +1304,10 @@ export default function AdminDashboard() {
                 '& .MuiDrawer-paper': {
                   width: drawerWidth,
                   boxSizing: 'border-box',
-                  bgcolor: '#1a1a1a',
+                  background: 'linear-gradient(180deg, #4a0e13 0%, #211c19 100%)',
                   color: 'white',
                   borderRight: 'none',
-                  height: '100vh',
+                  height: '100svh',
                 },
               }}
             >
@@ -919,21 +1320,24 @@ export default function AdminDashboard() {
       <Box 
         component="main" 
         sx={{ 
-          flexGrow: 1, 
+          flex: '1 1 0%',
+          minWidth: 0,
           display: 'flex', 
           flexDirection: 'column', 
-          width: '100%',
-          height: '100vh',
+          width: 0,
+          height: '100svh',
           overflow: 'hidden',
-          bgcolor: darkMode ? '#121212' : '#f5f5f5',
+          bgcolor: isAuthenticated
+            ? darkMode ? '#121212' : '#f6f4f0'
+            : 'transparent',
         }}
       >
         {/* Top Bar - Fixed */}
         {isAuthenticated && (
           <Box 
             sx={{ 
-              bgcolor: darkMode ? '#171a21' : 'rgba(255,255,255,0.94)', 
-              borderBottom: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(15,17,21,0.06)', 
+              bgcolor: darkMode ? '#171a21' : 'rgba(246,244,240,0.94)',
+              borderBottom: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(33,28,25,0.1)',
               p: { xs: 2, sm: 2.5 },
               backdropFilter: 'blur(18px)',
               position: 'sticky',
@@ -961,9 +1365,26 @@ export default function AdminDashboard() {
                 >
                   <MenuIcon />
                 </IconButton>
-                <Typography variant="h5" fontWeight="bold" sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' }, color: darkMode ? 'white' : 'inherit' }}>
-                  Receipts
-                </Typography>
+                <Box>
+                  <Typography
+                    variant="h5"
+                    fontWeight={600}
+                    sx={{
+                      fontSize: { xs: '1.2rem', sm: '1.55rem' },
+                      letterSpacing: '-0.045em',
+                      lineHeight: 1.15,
+                      color: darkMode ? 'white' : '#211c19',
+                    }}
+                  >
+                    Treasury receipts
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: darkMode ? '#aaa' : '#746b64', letterSpacing: '0.02em' }}
+                  >
+                    Review submissions and keep records moving
+                  </Typography>
+                </Box>
               </Box>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                 <Button
@@ -972,6 +1393,7 @@ export default function AdminDashboard() {
                   onClick={fetchReceipts}
                   sx={{ 
                     textTransform: 'none',
+                    borderRadius: 999,
                     fontSize: { xs: '0.75rem', sm: '0.875rem' },
                     px: { xs: 1.5, sm: 2.5 },
                     py: { xs: 0.75, sm: 1 },
@@ -996,16 +1418,17 @@ export default function AdminDashboard() {
                   onClick={exportToCSV}
                   sx={{ 
                     textTransform: 'none',
+                    borderRadius: 999,
                     fontSize: { xs: '0.75rem', sm: '0.875rem' },
                     px: { xs: 1.5, sm: 2.5 },
                     py: { xs: 0.75, sm: 1 },
                     minWidth: { xs: 'auto', sm: '90px' },
                     whiteSpace: 'nowrap',
-                    color: '#2e7d32',
-                    borderColor: '#2e7d32',
+                    color: darkMode ? '#e5d7d2' : '#6b1c23',
+                    borderColor: darkMode ? 'rgba(255,255,255,0.22)' : 'rgba(107,28,35,0.24)',
                     '&:hover': {
-                      borderColor: '#1b5e20',
-                      bgcolor: 'rgba(46, 125, 50, 0.04)',
+                      borderColor: '#6b1c23',
+                      bgcolor: 'rgba(107, 28, 35, 0.05)',
                     },
                     '& .MuiButton-startIcon': {
                       marginRight: { xs: '4px', sm: '8px' }
@@ -1020,16 +1443,17 @@ export default function AdminDashboard() {
                   onClick={exportToPDF}
                   sx={{ 
                     textTransform: 'none',
+                    borderRadius: 999,
                     fontSize: { xs: '0.75rem', sm: '0.875rem' },
                     px: { xs: 1.5, sm: 2.5 },
                     py: { xs: 0.75, sm: 1 },
                     minWidth: { xs: 'auto', sm: '90px' },
                     whiteSpace: 'nowrap',
-                    color: '#d32f2f',
-                    borderColor: '#d32f2f',
+                    color: darkMode ? '#e5d7d2' : '#6b1c23',
+                    borderColor: darkMode ? 'rgba(255,255,255,0.22)' : 'rgba(107,28,35,0.24)',
                     '&:hover': {
-                      borderColor: '#c62828',
-                      bgcolor: 'rgba(211, 47, 47, 0.04)',
+                      borderColor: '#6b1c23',
+                      bgcolor: 'rgba(107, 28, 35, 0.05)',
                     },
                     '& .MuiButton-startIcon': {
                       marginRight: { xs: '4px', sm: '8px' }
@@ -1044,6 +1468,7 @@ export default function AdminDashboard() {
                   onClick={() => navigate('/upload')}
                   sx={{ 
                     textTransform: 'none',
+                    borderRadius: 999,
                     background: 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%)',
                     fontSize: { xs: '0.75rem', sm: '0.875rem' },
                     px: { xs: 1.5, sm: 2.5 },
@@ -1076,11 +1501,12 @@ export default function AdminDashboard() {
                   p: '6px 10px',
                   display: 'flex',
                   alignItems: 'center',
+                  borderRadius: 999,
                   flex: { xs: '1 1 100%', sm: '1 1 auto' },
                   minWidth: { xs: 'auto', sm: 320 },
                   maxWidth: { xs: '100%', sm: 430 },
-                  boxShadow: '0 10px 24px rgba(15, 17, 21, 0.06)',
-                  border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(15,17,21,0.06)',
+                  boxShadow: '0 8px 24px rgba(33, 28, 25, 0.04)',
+                  border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(33,28,25,0.10)',
                   bgcolor: darkMode ? '#20242d' : '#ffffff',
                 }}
               >
@@ -1105,6 +1531,7 @@ export default function AdminDashboard() {
                 sx={{ 
                   minWidth: { xs: '100%', sm: 180 },
                   '& .MuiOutlinedInput-root': {
+                    borderRadius: 999,
                     bgcolor: darkMode ? '#2a2a2a' : 'white',
                     '& fieldset': {
                       borderColor: darkMode ? '#333' : '#e0e0e0',
@@ -1162,9 +1589,12 @@ export default function AdminDashboard() {
         <Box 
           sx={{ 
             flexGrow: 1, 
-            p: { xs: 1.5, sm: 2, md: 3 }, 
+            minWidth: 0,
+            p: { xs: 2, sm: 3, md: 4 },
             overflow: 'auto', 
-            bgcolor: darkMode ? '#0f1115' : '#f4f6fb',
+            bgcolor: isAuthenticated
+              ? darkMode ? '#0f1115' : '#f6f4f0'
+              : 'transparent',
             height: '100%',
             '&::-webkit-scrollbar': {
               width: '10px',
@@ -1189,7 +1619,7 @@ export default function AdminDashboard() {
               {loading ? (
                 <Grid container spacing={{ xs: 2, sm: 2.5, md: 3 }} sx={{ mb: { xs: 3, sm: 4 } }}>
                   {[1, 2, 3, 4].map((i) => (
-                    <Grid item xs={6} sm={6} md={3} key={i}>
+                        <Grid item xs={12} sm={6} lg={3} key={i}>
                       <Card elevation={2}>
                         <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                           <Skeleton variant="circular" width={48} height={48} sx={{ mb: 2 }} />
@@ -1205,9 +1635,9 @@ export default function AdminDashboard() {
                   {/* Total Receipts */}
                   <Grid 
                     item 
-                    xs={6} 
-                    sm={6} 
-                    md={3}
+                    xs={12}
+                    sm={6}
+                    lg={3}
                     sx={{
                       animation: 'slideInUp 0.6s ease-out',
                       '@keyframes slideInUp': {
@@ -1219,17 +1649,16 @@ export default function AdminDashboard() {
                     <Card 
                       elevation={3}
                       sx={{ 
-                        background: darkMode 
-                          ? 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%)'
-                          : 'linear-gradient(135deg, #7a2430 0%, #5b1622 100%)',
-                        color: 'white',
+                        background: darkMode ? '#201b1a' : '#fffdfa',
+                        color: darkMode ? '#fff' : '#211c19',
+                        border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(107,28,35,0.14)',
                         borderRadius: 3,
                         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                         cursor: 'pointer',
-                        boxShadow: '0 16px 34px rgba(107, 28, 35, 0.16)',
+                        boxShadow: '0 12px 32px rgba(33,28,25,0.045)',
                         '&:hover': {
                           transform: { xs: 'translateY(-4px) scale(1.01)', md: 'translateY(-8px) scale(1.02)' },
-                          boxShadow: '0 22px 40px rgba(107, 28, 35, 0.22)',
+                        boxShadow: '0 18px 36px rgba(33,28,25,0.09)',
                         },
                       }}
                     >
@@ -1237,13 +1666,13 @@ export default function AdminDashboard() {
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: { xs: 1, sm: 2 } }}>
                           <Box
                             sx={{
-                              bgcolor: 'rgba(255,255,255,0.2)',
+                              bgcolor: 'rgba(107,28,35,0.08)',
                               p: { xs: 1, sm: 1.5 },
                               borderRadius: 2,
                               display: 'flex',
                             }}
                           >
-                            <ReceiptIcon sx={{ fontSize: { xs: 24, sm: 28, md: 32 } }} />
+                            <ReceiptIcon sx={{ fontSize: { xs: 24, sm: 28, md: 32 }, color: '#6b1c23' }} />
                           </Box>
                         </Box>
                         <Typography 
@@ -1272,9 +1701,9 @@ export default function AdminDashboard() {
                   {/* Total Amount */}
                   <Grid 
                     item 
-                    xs={6} 
-                    sm={6} 
-                    md={3}
+                    xs={12}
+                    sm={6}
+                    lg={3}
                     sx={{
                       animation: 'slideInUp 0.6s ease-out 0.1s both',
                       '@keyframes slideInUp': {
@@ -1286,18 +1715,16 @@ export default function AdminDashboard() {
                     <Card 
                       elevation={3}
                       sx={{ 
-                        background: darkMode
-                          ? 'linear-gradient(135deg, #232631 0%, #171a21 100%)'
-                          : 'linear-gradient(135deg, #ffffff 0%, #f3f5f9 100%)',
-                        color: darkMode ? 'white' : '#1f2937',
-                        border: darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(15,17,21,0.06)',
+                        background: darkMode ? '#201b1a' : '#fffdfa',
+                        color: darkMode ? 'white' : '#211c19',
+                        border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(107,28,35,0.14)',
                         borderRadius: 3,
                         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                         cursor: 'pointer',
-                        boxShadow: '0 18px 34px rgba(15, 17, 21, 0.06)',
+                        boxShadow: '0 12px 32px rgba(33,28,25,0.045)',
                         '&:hover': {
                           transform: { xs: 'translateY(-4px) scale(1.01)', md: 'translateY(-8px) scale(1.02)' },
-                          boxShadow: '0 24px 40px rgba(15, 17, 21, 0.10)',
+                          boxShadow: '0 18px 36px rgba(33,28,25,0.09)',
                         },
                       }}
                     >
@@ -1305,13 +1732,13 @@ export default function AdminDashboard() {
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: { xs: 1, sm: 2 } }}>
                           <Box
                             sx={{
-                              bgcolor: 'rgba(255,255,255,0.2)',
+                              bgcolor: 'rgba(107,28,35,0.08)',
                               p: { xs: 1, sm: 1.5 },
                               borderRadius: 2,
                               display: 'flex',
                             }}
                           >
-                            <AttachMoneyIcon sx={{ fontSize: { xs: 24, sm: 28, md: 32 } }} />
+                            <AttachMoneyIcon sx={{ fontSize: { xs: 24, sm: 28, md: 32 }, color: '#6b1c23' }} />
                           </Box>
                         </Box>
                         <Typography 
@@ -1322,7 +1749,9 @@ export default function AdminDashboard() {
                             fontSize: { xs: '1.25rem', sm: '1.75rem', md: '2.125rem' },
                           }}
                         >
-                          ₺{displayStats.totalAmount.toFixed(2)}
+                          {hasRecognizedAmount
+                            ? formatReceiptAmount(displayStats.totalAmount)
+                            : 'Not detected'}
                         </Typography>
                         <Typography 
                           variant="body2" 
@@ -1340,9 +1769,9 @@ export default function AdminDashboard() {
                   {/* Approved */}
                   <Grid 
                     item 
-                    xs={6} 
-                    sm={6} 
-                    md={3}
+                    xs={12}
+                    sm={6}
+                    lg={3}
                     sx={{
                       animation: 'slideInUp 0.6s ease-out 0.2s both',
                       '@keyframes slideInUp': {
@@ -1354,17 +1783,16 @@ export default function AdminDashboard() {
                     <Card 
                       elevation={3}
                       sx={{ 
-                        background: darkMode
-                          ? 'linear-gradient(135deg, #8b3040 0%, #6b1c23 100%)'
-                          : 'linear-gradient(135deg, #9a3847 0%, #6b1c23 100%)',
-                        color: 'white',
+                        background: darkMode ? '#201b1a' : '#fffdfa',
+                        color: darkMode ? 'white' : '#211c19',
+                        border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(107,28,35,0.14)',
                         borderRadius: 3,
                         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                         cursor: 'pointer',
-                        boxShadow: '0 16px 34px rgba(107, 28, 35, 0.16)',
+                        boxShadow: '0 12px 32px rgba(33,28,25,0.045)',
                         '&:hover': {
                           transform: { xs: 'translateY(-4px) scale(1.01)', md: 'translateY(-8px) scale(1.02)' },
-                          boxShadow: '0 22px 40px rgba(107, 28, 35, 0.22)',
+                          boxShadow: '0 18px 36px rgba(33,28,25,0.09)',
                         },
                       }}
                     >
@@ -1372,13 +1800,13 @@ export default function AdminDashboard() {
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: { xs: 1, sm: 2 } }}>
                           <Box
                             sx={{
-                              bgcolor: 'rgba(255,255,255,0.2)',
+                              bgcolor: 'rgba(107,28,35,0.08)',
                               p: { xs: 1, sm: 1.5 },
                               borderRadius: 2,
                               display: 'flex',
                             }}
                           >
-                            <CheckCircleIcon sx={{ fontSize: { xs: 24, sm: 28, md: 32 } }} />
+                            <CheckCircleIcon sx={{ fontSize: { xs: 24, sm: 28, md: 32 }, color: '#6b1c23' }} />
                           </Box>
                         </Box>
                         <Typography 
@@ -1407,9 +1835,9 @@ export default function AdminDashboard() {
                   {/* Pending */}
                   <Grid 
                     item 
-                    xs={6} 
-                    sm={6} 
-                    md={3}
+                    xs={12}
+                    sm={6}
+                    lg={3}
                     sx={{
                       animation: 'slideInUp 0.6s ease-out 0.3s both',
                       '@keyframes slideInUp': {
@@ -1421,18 +1849,16 @@ export default function AdminDashboard() {
                     <Card 
                       elevation={3}
                       sx={{ 
-                        background: darkMode
-                          ? 'linear-gradient(135deg, #2a2f3a 0%, #1f2430 100%)'
-                          : 'linear-gradient(135deg, #f7f8fb 0%, #eef2f7 100%)',
-                        color: darkMode ? 'white' : '#374151',
+                        background: darkMode ? '#201b1a' : '#fffdfa',
+                        color: darkMode ? 'white' : '#211c19',
                         borderRadius: 3,
-                        border: darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(15,17,21,0.06)',
+                        border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(107,28,35,0.14)',
                         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                         cursor: 'pointer',
-                        boxShadow: '0 18px 34px rgba(15, 17, 21, 0.06)',
+                        boxShadow: '0 12px 32px rgba(33,28,25,0.045)',
                         '&:hover': {
                           transform: { xs: 'translateY(-4px) scale(1.01)', md: 'translateY(-8px) scale(1.02)' },
-                          boxShadow: '0 24px 40px rgba(15, 17, 21, 0.10)',
+                          boxShadow: '0 18px 36px rgba(33,28,25,0.09)',
                         },
                       }}
                     >
@@ -1440,13 +1866,13 @@ export default function AdminDashboard() {
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: { xs: 1, sm: 2 } }}>
                           <Box
                             sx={{
-                              bgcolor: 'rgba(255,255,255,0.2)',
+                              bgcolor: 'rgba(107,28,35,0.08)',
                               p: { xs: 1, sm: 1.5 },
                               borderRadius: 2,
                               display: 'flex',
                             }}
                           >
-                            <PendingActionsIcon sx={{ fontSize: { xs: 24, sm: 28, md: 32 } }} />
+                            <PendingActionsIcon sx={{ fontSize: { xs: 24, sm: 28, md: 32 }, color: '#6b1c23' }} />
                           </Box>
                         </Box>
                         <Typography 
@@ -1541,7 +1967,9 @@ export default function AdminDashboard() {
                               fontWeight="bold"
                               sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}
                             >
-                              ₺{stats.totalAmount.toLocaleString()}
+                              {hasRecognizedAmount
+                                ? formatReceiptAmount(stats.totalAmount)
+                                : 'Not detected'}
                             </Typography>
                             <Typography 
                               variant="caption" 
@@ -1687,53 +2115,72 @@ export default function AdminDashboard() {
         fullScreen={false}
         PaperProps={{
           sx: {
-            borderRadius: { xs: 2, sm: 4 },
+            borderRadius: { xs: 3, sm: 4 },
             overflow: 'hidden',
-            boxShadow: '0 24px 48px rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(33,28,25,0.12)',
+            boxShadow: '0 28px 80px rgba(33,28,25,0.18)',
             m: { xs: 2, sm: 3 },
             maxWidth: { xs: 'calc(100% - 32px)', sm: 444 },
-            bgcolor: darkMode ? '#2a2a2a' : 'white',
+            maxHeight: 'calc(100% - 32px)',
+            bgcolor: darkMode ? '#2a2a2a' : '#fffdfa',
           }
         }}
         BackdropProps={{
           sx: {
-            background: 'linear-gradient(135deg, rgba(107, 28, 35, 0.95) 0%, rgba(74, 14, 19, 0.95) 50%, rgba(26, 26, 26, 0.95) 100%)',
-            backdropFilter: 'blur(8px)',
+            background: 'rgba(33,28,25,0.25)',
+            backdropFilter: 'blur(5px)',
           }
         }}
       >
         <DialogTitle 
           sx={{ 
-            background: 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%)', 
-            color: 'white',
+            bgcolor: darkMode ? '#211c19' : '#f6f4f0',
+            color: darkMode ? 'white' : '#211c19',
             textAlign: 'center',
-            py: { xs: 2.5, sm: 3 },
+            py: { xs: 2, sm: 2.5 },
             px: { xs: 2, sm: 3 },
+            borderBottom: '1px solid rgba(33,28,25,0.1)',
           }}
         >
           <img 
             src="/necf-logo.png" 
             alt="NECF Logo" 
             style={{ 
-              width: window.innerWidth < 600 ? '80px' : '100px',
-              height: window.innerWidth < 600 ? '80px' : '100px',
+              width: window.innerWidth < 600 ? '64px' : '72px',
+              height: window.innerWidth < 600 ? '64px' : '72px',
               objectFit: 'contain',
-              marginBottom: '12px'
+              marginBottom: '8px'
             }} 
           />
+          <Typography
+            component="div"
+            sx={{
+              mb: 0.75,
+              color: '#6b1c23',
+              fontSize: '0.62rem',
+              fontWeight: 700,
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+            }}
+          >
+            NECF / Treasury / Administration
+          </Typography>
           <Typography 
             component="div"
             variant="h5" 
-            fontWeight="bold"
-            sx={{ fontSize: { xs: '1.15rem', sm: '1.5rem' } }}
+            fontWeight={600}
+            sx={{
+              fontSize: { xs: '1.25rem', sm: '1.45rem' },
+              letterSpacing: '-0.04em',
+            }}
           >
-            Near East Christian Fellowship
+            Treasury access
           </Typography>
-          <Typography variant="body2" sx={{ mt: 1, opacity: 0.9 }}>
-            Treasury System - Admin Login
+          <Typography variant="body2" sx={{ mt: 0.75, color: '#514a45' }}>
+            Sign in to review receipts and records
           </Typography>
         </DialogTitle>
-        <DialogContent sx={{ mt: 3, px: 4, pb: 2 }}>
+        <DialogContent sx={{ px: { xs: 2.5, sm: 4 }, pt: 2.5, pb: 1.5 }}>
           {loginError && (
             <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
               {loginError}
@@ -1751,14 +2198,16 @@ export default function AdminDashboard() {
               variant="outlined"
               sx={{
                 '& .MuiOutlinedInput-root': {
-                  borderRadius: 2,
+                  borderRadius: 2.5,
                   bgcolor: darkMode ? '#1e1e1e' : 'white',
                   '& input': {
                     color: darkMode ? 'white' : 'inherit',
                   },
+                  '& fieldset': { borderColor: 'rgba(33,28,25,0.16)' },
+                  '&:hover fieldset': { borderColor: 'rgba(107,28,35,0.5)' },
                   '&.Mui-focused fieldset': {
                     borderColor: '#6B1C23',
-                    borderWidth: '2px',
+                    borderWidth: '1px',
                   },
                 },
                 '& .MuiInputLabel-root': {
@@ -1780,14 +2229,16 @@ export default function AdminDashboard() {
               variant="outlined"
               sx={{
                 '& .MuiOutlinedInput-root': {
-                  borderRadius: 2,
+                  borderRadius: 2.5,
                   bgcolor: darkMode ? '#1e1e1e' : 'white',
                   '& input': {
                     color: darkMode ? 'white' : 'inherit',
                   },
+                  '& fieldset': { borderColor: 'rgba(33,28,25,0.16)' },
+                  '&:hover fieldset': { borderColor: 'rgba(107,28,35,0.5)' },
                   '&.Mui-focused fieldset': {
                     borderColor: '#6B1C23',
-                    borderWidth: '2px',
+                    borderWidth: '1px',
                   },
                 },
                 '& .MuiInputLabel-root': {
@@ -1800,14 +2251,23 @@ export default function AdminDashboard() {
             />
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 3, pt: 2, bgcolor: darkMode ? '#1e1e1e' : '#fafafa' }}>
+        <DialogActions
+          sx={{
+            px: { xs: 2.5, sm: 4 },
+            py: 2.5,
+            gap: 1.5,
+            borderTop: '1px solid rgba(33,28,25,0.1)',
+            bgcolor: darkMode ? '#1e1e1e' : '#fffdfa',
+          }}
+        >
           <Button 
             onClick={() => navigate('/')}
             sx={{ 
               textTransform: 'none',
-              borderRadius: 2,
+              borderRadius: 999,
               px: 3,
               color: darkMode ? '#aaa' : 'inherit',
+              border: '1px solid rgba(33,28,25,0.15)',
               '&:hover': {
                 bgcolor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
               }
@@ -1820,14 +2280,14 @@ export default function AdminDashboard() {
             onClick={handleLogin}
             size="large"
             sx={{
-              background: 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%)',
+              background: '#6B1C23',
               textTransform: 'none',
-              borderRadius: 2,
+              borderRadius: 999,
               px: 4,
+              boxShadow: 'none',
               '&:hover': {
-                background: 'linear-gradient(135deg, #4A0E13 0%, #6B1C23 100%)',
-                boxShadow: '0 6px 16px rgba(107, 28, 35, 0.4)',
-                transform: 'translateY(-2px)',
+                background: '#4A0E13',
+                boxShadow: '0 8px 20px rgba(107, 28, 35, 0.2)',
               },
               transition: 'all 0.3s ease',
             }}
