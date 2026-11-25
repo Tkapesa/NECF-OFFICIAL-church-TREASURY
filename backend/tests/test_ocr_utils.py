@@ -2,13 +2,16 @@ import io
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from fastapi import HTTPException, Request
 from PIL import Image
 from pytesseract.pytesseract import TesseractNotFoundError
 import pymupdf
 
 import ocr_utils
+from main import get_receipt_pages, get_receipt_preview
+from models import Receipt
 
 
 class ReceiptParsingTests(unittest.TestCase):
@@ -87,6 +90,24 @@ class ReceiptParsingTests(unittest.TestCase):
         self.assertEqual(result["ocr_date"], "2026-11-13")
         run_ocr.assert_not_called()
 
+    def test_reads_searchable_pdf_totals_in_visual_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pdf_path = os.path.join(directory, "receipt.pdf")
+            document = pymupdf.open()
+            page = document.new_page()
+            for y, label in ((72, "ARA TOPLAM"), (100, "TOPLAM"), (128, "INDIRIM")):
+                page.insert_text((72, y), label)
+            for y, amount in ((72, "4.560,00 TL"), (100, "4.104,00 TL"), (128, "456,00 TL")):
+                page.insert_text((250, y), amount)
+            document.save(pdf_path)
+            document.close()
+
+            with patch("ocr_utils.run_ocr_with_fallbacks") as run_ocr:
+                result = ocr_utils.extract_receipt_data(pdf_path)
+
+        self.assertEqual(result["ocr_price"], 4104.0)
+        run_ocr.assert_not_called()
+
     def test_ocr_processes_scanned_pdf_pages(self):
         with tempfile.TemporaryDirectory() as directory:
             pdf_path = os.path.join(directory, "scanned.pdf")
@@ -121,6 +142,49 @@ class ReceiptParsingTests(unittest.TestCase):
             self.assertEqual(rendered_image.format, "PNG")
             self.assertGreater(rendered_image.width, 0)
             self.assertGreater(rendered_image.height, 0)
+
+    def test_lists_and_renders_all_pdf_pages(self):
+        document = pymupdf.open()
+        document.new_page(width=200, height=300)
+        document.new_page(width=400, height=300)
+        contents = document.tobytes()
+        document.close()
+        receipt = Receipt(id=7, image_data=contents, image_content_type="application/pdf")
+        db = Mock()
+        db.query.return_value.filter.return_value.first.return_value = receipt
+        request = Request({
+            "type": "http", "scheme": "http", "server": ("testserver", 80),
+            "headers": [], "path": "/api/receipts/7/pages",
+        })
+
+        pages = get_receipt_pages(7, request, db)["pages"]
+        self.assertEqual(len(pages), 2)
+        self.assertTrue(pages[1].endswith("/api/receipts/7/preview?page=2"))
+        first = get_receipt_preview(7, 1, db)
+        second = get_receipt_preview(7, 2, db)
+        with Image.open(io.BytesIO(first.body)) as first_image:
+            with Image.open(io.BytesIO(second.body)) as second_image:
+                self.assertGreater(second_image.width, first_image.width)
+        with self.assertRaises(HTTPException) as error:
+            get_receipt_preview(7, 3, db)
+        self.assertEqual(error.exception.status_code, 404)
+
+    def test_lists_image_receipt_as_one_page(self):
+        receipt = Receipt(id=8, image_data=b"image", image_content_type="image/png")
+        db = Mock()
+        db.query.return_value.filter.return_value.first.return_value = receipt
+        request = Request({
+            "type": "http", "scheme": "http", "server": ("testserver", 80),
+            "headers": [], "path": "/api/receipts/8/pages",
+        })
+
+        self.assertEqual(
+            get_receipt_pages(8, request, db)["pages"],
+            ["http://testserver/api/receipts/8/image"],
+        )
+        with self.assertRaises(HTTPException) as error:
+            get_receipt_preview(8, 2, db)
+        self.assertEqual(error.exception.status_code, 404)
 
 
 if __name__ == "__main__":

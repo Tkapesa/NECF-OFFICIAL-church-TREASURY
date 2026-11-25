@@ -5,8 +5,8 @@ import ReceiptUploadForm from '../components/ReceiptUploadForm';
 const steps = [
   {
     number: '01',
-    title: 'Add a clear receipt image',
-    description: 'Choose an image from your device or take a photo.',
+    title: 'Add your receipt',
+    description: 'Choose an image or PDF from your device, or take a photo.',
   },
   {
     number: '02',
@@ -70,7 +70,7 @@ export default function UploadPage() {
           <p className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-[#6b1c23] sm:text-xs">
             NECF / Treasury / Receipt submission
           </p>
-          <h1 className="mt-5 max-w-xl whitespace-pre-line text-[clamp(3rem,7vw,6.5rem)] font-medium leading-[0.94] tracking-[-0.075em]">
+          <h1 className="mt-5 max-w-xl whitespace-pre-line text-[clamp(2rem,4vw,2.125rem)] font-medium leading-[1.12] tracking-[-0.025em]">
             Submit with
             {'\n'}confidence.
           </h1>

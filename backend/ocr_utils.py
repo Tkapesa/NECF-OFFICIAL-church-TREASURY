@@ -107,7 +107,7 @@ def validate_pdf_bytes(contents: bytes) -> None:
         raise ValueError("The uploaded PDF is invalid or unreadable.") from error
 
 
-def render_pdf_preview(pdf_bytes: bytes) -> bytes:
+def get_pdf_page_count(pdf_bytes: bytes) -> int:
     if not PYMUPDF_AVAILABLE:
         raise RuntimeError("PDF preview is unavailable; install PyMuPDF.")
 
@@ -116,8 +116,20 @@ def render_pdf_preview(pdf_bytes: bytes) -> bytes:
             raise ValueError("Password-protected PDFs are not supported.")
         if len(document) == 0:
             raise ValueError("The PDF contains no pages.")
+        return len(document)
 
-        page = document[0]
+
+def render_pdf_preview(pdf_bytes: bytes, page_number: int = 1) -> bytes:
+    if not PYMUPDF_AVAILABLE:
+        raise RuntimeError("PDF preview is unavailable; install PyMuPDF.")
+
+    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as document:
+        if document.needs_pass:
+            raise ValueError("Password-protected PDFs are not supported.")
+        if page_number < 1 or page_number > len(document):
+            raise ValueError("PDF page not found.")
+
+        page = document[page_number - 1]
         page_area = max(1.0, page.rect.width * page.rect.height)
         scale = min(1.5, (MAX_PDF_PREVIEW_PIXELS / page_area) ** 0.5)
         pixmap = page.get_pixmap(
@@ -296,7 +308,7 @@ def _extract_pdf_text(pdf_path: str) -> str:
             raise ValueError(f"PDFs are limited to {MAX_PDF_PAGES} pages.")
 
         for page in document:
-            native_text = page.get_text("text").strip()
+            native_text = page.get_text("text", sort=True).strip()
             if native_text and extract_price(native_text) is not None:
                 page_texts.append(native_text)
                 continue

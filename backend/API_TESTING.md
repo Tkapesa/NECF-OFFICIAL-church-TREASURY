@@ -45,6 +45,17 @@ Save the `access_token` for subsequent requests.
 
 ---
 
+### Receipt pages for reports
+
+`GET /api/receipts/{receipt_id}/pages` returns a `pages` array of printable
+image URLs. For PDF receipts, it includes one URL per page; for image receipts,
+it contains the original image URL.
+
+`GET /api/receipts/{receipt_id}/preview?page=2` returns the second PDF page
+as PNG. Omitting `page` returns the first page.
+
+---
+
 ## 3. Upload Receipt (User Side)
 
 **POST /api/receipts/upload**

@@ -12,7 +12,6 @@ import {
   Paper,
   Card,
   CardContent,
-  Divider,
   Chip,
   Stack,
   InputAdornment,
@@ -29,7 +28,6 @@ import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ImageIcon from '@mui/icons-material/Image';
 import SendIcon from '@mui/icons-material/Send';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import CloseIcon from '@mui/icons-material/Close';
@@ -154,24 +152,7 @@ export default function ReceiptUploadForm() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    
-    // Format phone number as user types
-    if (name === 'user_phone') {
-      const digits = value.replace(/\D/g, '');
-      let formatted = digits;
-      
-      if (digits.length >= 10) {
-        formatted = `+${digits.slice(0, 1)} (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 11)}`;
-      } else if (digits.length >= 7) {
-        formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-      } else if (digits.length >= 3) {
-        formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-      }
-      
-      setFormData({ ...formData, [name]: formatted });
-    } else {
-      setFormData({ ...formData, [name]: value });
-    }
+    setFormData({ ...formData, [name]: value });
     
     // Clear error when user types
     if (errors[name]) {
@@ -247,7 +228,7 @@ export default function ReceiptUploadForm() {
         ocr.ocr_time || null,
       ].filter(Boolean);
       const ocrNote = ocrBits.length
-        ? ` OCR detected: ${ocrBits.join(', ')}.${ocrBits.length < 3 ? ' Review any missing values in the admin dashboard.' : ''}`
+        ? ` OCR detected: ${ocrBits.join(', ')}.${ocrBits.length < 3 ? ' The treasury team can review any missing values.' : ''}`
         : String(ocr.ocr_raw_text || '').startsWith('OCR unavailable:')
           ? ' OCR is not available on the server. The image was saved for manual review.'
           : ' OCR could not detect price, date, or time. The image was saved for manual review.';
@@ -351,7 +332,7 @@ export default function ReceiptUploadForm() {
                 fontWeight="bold"
                 sx={{ fontSize: { xs: '1.15rem', sm: '1.35rem', md: '1.5rem' } }}
               >
-                Receipt Submission
+                Submit a receipt
               </Typography>
               <Typography 
                 variant="body2" 
@@ -360,7 +341,7 @@ export default function ReceiptUploadForm() {
                   fontSize: { xs: '0.75rem', sm: '0.85rem', md: '0.875rem' },
                 }}
               >
-                Fill in the details and upload your receipt image
+                Add your receipt and the details below.
               </Typography>
             </Box>
           </Stack>
@@ -386,67 +367,17 @@ export default function ReceiptUploadForm() {
         )}
 
         <Box component="form" onSubmit={handleSubmit}>
-          {/* Step Indicators */}
-          <Stack 
-            direction="row" 
-            spacing={{ xs: 1, sm: 1.5, md: 2 }}
-            sx={{ mb: { xs: 3, sm: 3.5, md: 4 }, justifyContent: 'center', flexWrap: 'wrap', gap: { xs: 1, sm: 0 } }}
-          >
-            <Chip 
-              icon={<ImageIcon />} 
-              label="Upload Image" 
-              color={image ? "success" : "default"}
-              variant={image ? "filled" : "outlined"}
-              sx={{ 
-                fontWeight: 'bold',
-                transition: 'all 0.3s ease',
-                fontSize: { xs: '0.75rem', sm: '0.8125rem' },
-                height: { xs: 28, sm: 32 },
-                '&:hover': { transform: 'translateY(-1px)' },
-                '& .MuiChip-icon': {
-                  fontSize: { xs: 16, sm: 18 },
-                },
-              }}
-            />
-            <Chip 
-              icon={<PersonIcon />} 
-              label="Personal Details" 
-              variant="outlined"
-              sx={{ 
-                fontSize: { xs: '0.75rem', sm: '0.8125rem' },
-                height: { xs: 28, sm: 32 },
-                '&:hover': { transform: 'translateY(-1px)' },
-                '& .MuiChip-icon': {
-                  fontSize: { xs: 16, sm: 18 },
-                },
-              }}
-            />
-            <Chip 
-              icon={<CheckCircleIcon />} 
-              label="Submit" 
-              variant="outlined"
-              sx={{ 
-                fontSize: { xs: '0.75rem', sm: '0.8125rem' },
-                height: { xs: 28, sm: 32 },
-                '&:hover': { transform: 'translateY(-1px)' },
-                '& .MuiChip-icon': {
-                  fontSize: { xs: 16, sm: 18 },
-                },
-              }}
-            />
-          </Stack>
-
           {/* Image Upload Section */}
           <Paper 
             elevation={0}
             sx={{ 
               p: { xs: 2, sm: 2.5, md: 3 },
               mb: { xs: 2.5, sm: 3 },
-              border: '2px dashed',
-              borderColor: image ? '#6B1C23' : 'divider',
+              border: '1px dashed',
+              borderColor: image ? '#6B1C23' : 'rgba(107, 28, 35, 0.35)',
               borderRadius: { xs: 2, md: 3 },
               bgcolor: image ? 'rgba(107, 28, 35, 0.02)' : 'transparent',
-              background: 'linear-gradient(180deg, rgba(107, 28, 35, 0.04) 0%, rgba(255,255,255,0.65) 100%)',
+              background: '#faf7f4',
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)',
               transition: 'all 0.3s ease',
               '&:hover': {
@@ -457,15 +388,17 @@ export default function ReceiptUploadForm() {
             }}
           >
             <Typography 
-              variant="subtitle2" 
-              color="text.secondary" 
+              component="h2"
               sx={{ 
-                mb: 2, 
-                textAlign: 'center',
-                fontSize: { xs: '0.85rem', sm: '0.875rem' }
+                mb: 0.5,
+                fontSize: '1.25rem',
+                fontWeight: 600,
               }}
             >
-              {image ? 'Receipt image selected' : 'Choose how to add your receipt'}
+              {image ? 'Receipt selected' : 'Add your receipt'}
+            </Typography>
+            <Typography sx={{ mb: 2.5, color: '#625a54', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              Upload a file or take a clear photo of your receipt.
             </Typography>
 
             {/* Camera and Upload Buttons */}
@@ -508,22 +441,22 @@ export default function ReceiptUploadForm() {
               </Button>
 
               <Button
-                variant={image ? "outlined" : "contained"}
+                variant="outlined"
                 fullWidth
                 size="large"
                 startIcon={<CameraAltIcon sx={{ fontSize: { xs: 20, sm: 24 } }} />}
                 onClick={startCamera}
                 sx={{ 
                   py: { xs: 1.5, sm: 1.8, md: 2 },
-                  background: image ? 'transparent' : 'linear-gradient(135deg, #4A0E13 0%, #6B1C23 100%)',
+                  background: 'transparent',
                   borderColor: '#6B1C23',
-                  color: image ? '#6B1C23' : 'white',
+                  color: '#6B1C23',
                   fontWeight: 'bold',
                   fontSize: { xs: '0.9rem', sm: '0.95rem', md: '1rem' },
                   letterSpacing: '0.3px',
                   textTransform: 'none',
                   '&:hover': {
-                    background: image ? 'rgba(107, 28, 35, 0.08)' : 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%)',
+                    background: 'rgba(107, 28, 35, 0.08)',
                     borderColor: '#4A0E13',
                     transform: 'translateY(-2px)',
                     boxShadow: '0 6px 20px rgba(107, 28, 35, 0.3)',
@@ -537,21 +470,15 @@ export default function ReceiptUploadForm() {
 
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
-              spacing={1}
-              sx={{ mt: { xs: 1.5, sm: 2 }, justifyContent: 'center' }}
+              spacing={{ xs: 0.5, sm: 2 }}
+              sx={{ mt: { xs: 1.5, sm: 2 }, color: '#625a54' }}
             >
-              <Chip
-                label="Images or PDF • Max 5 MB; PDF up to 5 pages"
-                size="small"
-                variant="outlined"
-                sx={{ fontSize: '0.72rem', borderColor: 'rgba(107, 28, 35, 0.3)' }}
-              />
-              <Chip
-                label="Tip: Use bright, flat lighting"
-                size="small"
-                variant="outlined"
-                sx={{ fontSize: '0.72rem', borderColor: 'rgba(107, 28, 35, 0.3)' }}
-              />
+              <Typography sx={{ fontSize: '0.8rem', lineHeight: 1.5 }}>
+                Images or PDF, up to 5 MB. PDFs may contain up to 5 pages.
+              </Typography>
+              <Typography sx={{ fontSize: '0.8rem', lineHeight: 1.5 }}>
+                Tip: Use bright, even lighting.
+              </Typography>
             </Stack>
 
             {image && (
@@ -560,6 +487,7 @@ export default function ReceiptUploadForm() {
                   sx={{ 
                     textAlign: 'center',
                     position: 'relative',
+                    mt: 2,
                     padding: 1,
                     borderRadius: 2,
                     border: '1px solid rgba(107, 28, 35, 0.15)',
@@ -606,21 +534,22 @@ export default function ReceiptUploadForm() {
             )}
           </Paper>
 
-          {/* Divider */}
-          <Divider sx={{ my: { xs: 2.5, sm: 3 } }}>
-            <Chip 
-              label="Receipt Details" 
-              size="small"
-              sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}
-            />
-          </Divider>
+          <Box sx={{ mb: 3, pt: 1 }}>
+            <Typography component="h2" sx={{ fontSize: '1.25rem', fontWeight: 600 }}>
+              Purchase details
+            </Typography>
+            <Typography sx={{ mt: 0.5, color: '#625a54', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              All fields are required.
+            </Typography>
+          </Box>
 
           {/* Form Fields with Icons */}
-          <Stack spacing={{ xs: 2.5, sm: 3 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 2.5, sm: 3 } }}>
             <TextField
               fullWidth
               label="Your Full Name"
               name="user_name"
+              autoComplete="name"
               value={formData.user_name}
               onChange={handleInputChange}
               required
@@ -664,13 +593,15 @@ export default function ReceiptUploadForm() {
               fullWidth
               label="Phone Number"
               name="user_phone"
+              type="tel"
+              autoComplete="tel"
               value={formData.user_phone}
               onChange={handleInputChange}
               required
               error={!!errors.user_phone}
-              helperText={errors.user_phone || 'Enter your phone number with area code'}
+              helperText={errors.user_phone || 'Example: +90 532 123 45 67'}
               variant="outlined"
-              placeholder="+1 (555) 123-4567"
+              placeholder="+90 532 123 45 67"
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -733,6 +664,7 @@ export default function ReceiptUploadForm() {
                 }
               }}
               sx={{
+                gridColumn: { sm: '1 / -1' },
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2,
                   transition: 'all 0.3s ease',
@@ -777,6 +709,7 @@ export default function ReceiptUploadForm() {
                 }
               }}
               sx={{
+                gridColumn: { sm: '1 / -1' },
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2,
                   transition: 'all 0.3s ease',
@@ -793,7 +726,7 @@ export default function ReceiptUploadForm() {
                 },
               }}
             />
-          </Stack>
+          </Box>
 
           {/* Submit Button */}
           <Button

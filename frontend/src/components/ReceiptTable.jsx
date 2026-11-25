@@ -50,21 +50,61 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import api from '../api';
 import { formatReceiptAmount, formatReceiptDate } from '../utils/receiptFormatting';
 
-export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
+function ReceiptPreviewDialog({ preview, onClose, onError }) {
+  const isPdf = preview.contentType === 'application/pdf';
+
+  return (
+    <Dialog open={preview.open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle sx={{ bgcolor: '#211c19', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6">{preview.title || 'Receipt preview'}</Typography>
+        <IconButton onClick={onClose} aria-label="Close receipt preview" sx={{ color: 'white' }}>
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent sx={{ bgcolor: '#211c19', color: 'white', textAlign: 'center', p: 2 }}>
+        {preview.previewUrl && !preview.failed ? (
+          <img
+            src={preview.previewUrl}
+            alt={isPdf ? 'First page of receipt PDF' : (preview.title || 'Receipt image')}
+            onError={onError}
+            style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 8, margin: '0 auto' }}
+          />
+        ) : (
+          <Typography role="alert" sx={{ py: 4 }}>
+            Receipt preview is unavailable. {isPdf ? 'Open the full PDF below.' : 'Please try again.'}
+          </Typography>
+        )}
+        {isPdf && preview.url && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              Showing the first page of the PDF.
+            </Typography>
+            <Button component="a" href={preview.url} target="_blank" rel="noopener noreferrer" variant="outlined" sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.6)' }}>
+              Open full PDF
+            </Button>
+          </Box>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function ReceiptTable({ receipts, onUpdate, selectedReceipts, setSelectedReceipts, darkMode = false }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  const [selectedReceipts, setSelectedReceipts] = useState([]);
   const [menuAnchor, setMenuAnchor] = useState(null);
   const [menuReceiptId, setMenuReceiptId] = useState(null);
   const [expandedRows, setExpandedRows] = useState([]);
   const [imagePreview, setImagePreview] = useState({
     open: false,
     url: '',
+    previewUrl: '',
     title: '',
     contentType: '',
+    failed: false,
   });
 
   const handleEdit = (receipt) => {
@@ -157,12 +197,21 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
     );
   };
 
-  const handleImagePreview = (url, title, contentType) => {
-    setImagePreview({ open: true, url, title, contentType });
+  const handleImagePreview = (receipt) => {
+    setImagePreview({
+      open: true,
+      url: receipt.image_path,
+      previewUrl: receipt.image_preview_path || (
+        receipt.image_content_type === 'application/pdf' ? '' : receipt.image_path
+      ),
+      title: receipt.item_bought,
+      contentType: receipt.image_content_type,
+      failed: false,
+    });
   };
 
   const closeImagePreview = () => {
-    setImagePreview({ open: false, url: '', title: '', contentType: '' });
+    setImagePreview((current) => ({ ...current, open: false }));
   };
 
   const handleDelete = async (receiptId) => {
@@ -186,20 +235,21 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
   };
 
   const handleBulkDelete = async () => {
-    if (selectedReceipts.length === 0) {
+    const visibleSelection = receipts.filter((receipt) => selectedReceipts.includes(receipt.id)).map((receipt) => receipt.id);
+    if (visibleSelection.length === 0) {
       setSnackbar({ open: true, message: 'No receipts selected', severity: 'warning' });
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete ${selectedReceipts.length} receipt(s)? This action cannot be undone.`)) {
+    if (!window.confirm(`Are you sure you want to delete ${visibleSelection.length} receipt(s)? This action cannot be undone.`)) {
       return;
     }
 
     try {
-      await api.post('/receipts/bulk-delete', selectedReceipts);
+      await api.post('/receipts/bulk-delete', visibleSelection);
       setSnackbar({ 
         open: true, 
-        message: `Successfully deleted ${selectedReceipts.length} receipt(s)!`, 
+        message: `Successfully deleted ${visibleSelection.length} receipt(s)!`,
         severity: 'success' 
       });
       setSelectedReceipts([]);
@@ -264,7 +314,16 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
               <CardContent sx={{ pb: 1 }}>
                 {/* Header with Image and Title */}
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2, gap: 2 }}>
+                  <Checkbox
+                    checked={selectedReceipts.includes(receipt.id)}
+                    onChange={() => handleSelectOne(receipt.id)}
+                    inputProps={{ 'aria-label': `Select receipt ${receipt.id}` }}
+                    sx={{ color: '#6B1C23', p: 0.5, '&.Mui-checked': { color: '#6B1C23' } }}
+                  />
                   <Avatar
+                    component="button"
+                    type="button"
+                    aria-label={`View ${receipt.item_bought || 'receipt'} preview`}
                     src={receipt.image_preview_path || (
                       receipt.image_content_type === 'application/pdf' ? undefined : receipt.image_path
                     )}
@@ -276,11 +335,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                       border: '2px solid #e0e0e0',
                       flexShrink: 0,
                     }}
-                    onClick={() => handleImagePreview(
-                      receipt.image_path,
-                      receipt.item_bought,
-                      receipt.image_content_type,
-                    )}
+                    onClick={() => handleImagePreview(receipt)}
                   >
                     {receipt.image_content_type === 'application/pdf'
                       ? <PictureAsPdfIcon />
@@ -474,11 +529,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                             size="small"
                             fullWidth
                             startIcon={<ZoomInIcon />}
-                            onClick={() => handleImagePreview(
-                              receipt.image_path,
-                              receipt.item_bought,
-                              receipt.image_content_type,
-                            )}
+                            onClick={() => handleImagePreview(receipt)}
                             sx={{ mt: 1 }}
                           >
                             View Receipt Image
@@ -596,63 +647,11 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
           </Alert>
         </Snackbar>
 
-        {/* Image Preview Modal */}
-        <Dialog
-          open={imagePreview.open}
+        <ReceiptPreviewDialog
+          preview={imagePreview}
           onClose={closeImagePreview}
-          maxWidth="lg"
-          fullWidth
-          PaperProps={{
-            sx: {
-              bgcolor: 'rgba(0, 0, 0, 0.9)',
-              boxShadow: 24,
-            }
-          }}
-        >
-          <DialogTitle sx={{
-            bgcolor: 'rgba(0, 0, 0, 0.8)',
-            color: 'white',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-            <Typography variant="h6">
-              {imagePreview.title || 'Receipt Image'}
-            </Typography>
-            <IconButton onClick={closeImagePreview} sx={{ color: 'white' }}>
-              <CloseIcon />
-            </IconButton>
-          </DialogTitle>
-          <DialogContent sx={{ bgcolor: 'rgba(0, 0, 0, 0.9)', p: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <Box sx={{
-              width: '100%',
-              height: '70vh',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              p: 2,
-            }}>
-              {imagePreview.contentType === 'application/pdf' ? (
-                <iframe
-                  src={imagePreview.url}
-                  title={imagePreview.title || 'Receipt PDF preview'}
-                  style={{ width: '100%', height: '100%', border: 0 }}
-                />
-              ) : (
-                <img
-                  src={imagePreview.url}
-                  alt={imagePreview.title}
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                    borderRadius: '8px',
-                  }}
-                />
-              )}
-            </Box>
-          </DialogContent>
-        </Dialog>
+          onError={() => setImagePreview((current) => ({ ...current, failed: true }))}
+        />
       </Box>
     );
   }
@@ -738,6 +737,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                   indeterminate={selectedReceipts.length > 0 && selectedReceipts.length < receipts.length}
                   checked={receipts.length > 0 && selectedReceipts.length === receipts.length}
                   onChange={handleSelectAll}
+                  inputProps={{ 'aria-label': 'Select all visible receipts' }}
                   sx={{
                     color: '#6B1C23',
                     '&.Mui-checked': { color: '#6B1C23' },
@@ -856,6 +856,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                       <Checkbox
                         checked={isSelected}
                         onChange={() => handleSelectOne(receipt.id)}
+                        inputProps={{ 'aria-label': `Select receipt ${receipt.id}` }}
                         sx={{
                           color: '#6B1C23',
                           '&.Mui-checked': { color: '#6B1C23' },
@@ -875,6 +876,9 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                       ) : (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <Avatar
+                            component="button"
+                            type="button"
+                            aria-label={`View ${receipt.item_bought || 'receipt'} preview`}
                             src={receipt.image_preview_path || (
                               receipt.image_content_type === 'application/pdf' ? undefined : receipt.image_path
                             )}
@@ -892,11 +896,7 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                                   borderColor: '#6B1C23',
                                 },
                             }}
-                            onClick={() => handleImagePreview(
-                              receipt.image_path,
-                              receipt.item_bought,
-                              receipt.image_content_type,
-                            )}
+                            onClick={() => handleImagePreview(receipt)}
                         >
                           {receipt.image_content_type === 'application/pdf'
                             ? <PictureAsPdfIcon />
@@ -1265,23 +1265,15 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                                         border: darkMode ? '1px solid #555' : '1px solid #e0e0e0',
                                         cursor: 'pointer',
                                       }}
-                                      onClick={() => handleImagePreview(
-                                        receipt.image_path,
-                                        receipt.item_bought,
-                                        receipt.image_content_type,
-                                      )}
+                                      onClick={() => handleImagePreview(receipt)}
                                     />
                                     <Button
                                       variant="outlined"
                                       size="small"
                                       startIcon={<PictureAsPdfIcon />}
-                                      onClick={() => handleImagePreview(
-                                        receipt.image_path,
-                                        receipt.item_bought,
-                                        receipt.image_content_type,
-                                      )}
+                                      onClick={() => handleImagePreview(receipt)}
                                     >
-                                      Open PDF
+                                      View PDF preview
                                     </Button>
                                   </Box>
                                 ) : (
@@ -1295,22 +1287,14 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
                                       border: darkMode ? '1px solid #555' : '1px solid #e0e0e0',
                                       cursor: 'pointer',
                                     }}
-                                    onClick={() => handleImagePreview(
-                                      receipt.image_path,
-                                      receipt.item_bought,
-                                      receipt.image_content_type,
-                                    )}
+                                    onClick={() => handleImagePreview(receipt)}
                                   />
                                 )}
                                 <Button
                                   variant="outlined"
                                   size="small"
                                   startIcon={<ZoomInIcon />}
-                                  onClick={() => handleImagePreview(
-                                    receipt.image_path,
-                                    receipt.item_bought,
-                                    receipt.image_content_type,
-                                  )}
+                                  onClick={() => handleImagePreview(receipt)}
                                   sx={{
                                     color: darkMode ? '#fff' : '#d32f2f',
                                     borderColor: darkMode ? '#fff' : '#d32f2f',
@@ -1388,55 +1372,11 @@ export default function ReceiptTable({ receipts, onUpdate, darkMode = false }) {
         </Alert>
       </Snackbar>
 
-      {/* Image Preview Modal */}
-      <Dialog
-        open={imagePreview.open}
+      <ReceiptPreviewDialog
+        preview={imagePreview}
         onClose={closeImagePreview}
-        maxWidth="lg"
-        fullWidth
-        PaperProps={{
-          sx: {
-            bgcolor: 'rgba(0, 0, 0, 0.9)',
-            boxShadow: 24,
-          }
-        }}
-      >
-        <DialogTitle sx={{ 
-          bgcolor: 'rgba(0, 0, 0, 0.8)', 
-          color: 'white',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <Typography variant="h6">
-            {imagePreview.title || 'Receipt Image'}
-          </Typography>
-          <IconButton onClick={closeImagePreview} sx={{ color: 'white' }}>
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ bgcolor: 'rgba(0, 0, 0, 0.9)', p: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <Box sx={{ 
-            width: '100%', 
-            height: '70vh', 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'center',
-            p: 2,
-          }}>
-            <img 
-              src={imagePreview.url} 
-              alt={imagePreview.title}
-              style={{ 
-                maxWidth: '100%', 
-                maxHeight: '100%', 
-                objectFit: 'contain',
-                borderRadius: '8px',
-              }}
-            />
-          </Box>
-        </DialogContent>
-      </Dialog>
+        onError={() => setImagePreview((current) => ({ ...current, failed: true }))}
+      />
     </Paper>
   );
 }

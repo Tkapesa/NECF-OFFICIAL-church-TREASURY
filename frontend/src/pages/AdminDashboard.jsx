@@ -39,6 +39,9 @@ import {
   Select,
   InputLabel,
   InputAdornment,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
 } from '@mui/material';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -67,8 +70,17 @@ import ReceiptTable from '../components/ReceiptTable';
 import AdminManagement from '../components/AdminManagement';
 import api from '../api';
 import { formatReceiptAmount, formatReceiptDate } from '../utils/receiptFormatting';
+import { selectReceiptsForExport } from '../utils/receiptExport';
 
 const drawerWidth = 256;
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+}[character]));
+const csvCell = (value) => `"${String(value).replace(/"/g, '""')}"`;
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -80,15 +92,25 @@ export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Receipts');
-  const [showWelcomeBanner, setShowWelcomeBanner] = useState(true);
+  const [showActivityTimeline, setShowActivityTimeline] = useState(true);
   const [fabVisible, setFabVisible] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [statusFilter, setStatusFilter] = useState('all');
   const [isSuperuser, setIsSuperuser] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard' or 'admin-management'
-  const [loggedInUsername, setLoggedInUsername] = useState('Admin');
   const [darkMode, setDarkMode] = useState(false);
+  const [selectedReceipts, setSelectedReceipts] = useState([]);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('csv');
+  const [exportScope, setExportScope] = useState('all');
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [exportAttempted, setExportAttempted] = useState(false);
+
+  useEffect(() => {
+    setSelectedReceipts([]);
+  }, [searchQuery, statusFilter, selectedCategory]);
 
   const parseIsSuperuser = (value) => {
     if (typeof value === 'boolean') return value;
@@ -129,7 +151,6 @@ export default function AdminDashboard() {
     // Check if already logged in
     const token = localStorage.getItem('token');
     const savedSuperuser = parseIsSuperuser(localStorage.getItem('is_superuser'));
-    const savedUsername = localStorage.getItem('username');
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
     if (token) {
       setIsAuthenticated(true);
@@ -137,8 +158,6 @@ export default function AdminDashboard() {
       const resolvedSuperuser = savedSuperuser || superuserFromToken;
       setIsSuperuser(resolvedSuperuser);
       localStorage.setItem('is_superuser', String(resolvedSuperuser));
-      // Only set username if it exists and is not null/undefined
-      setLoggedInUsername(savedUsername && savedUsername !== 'null' && savedUsername !== 'undefined' ? savedUsername : 'Admin');
       setDarkMode(savedDarkMode);
       setLoginOpen(false);
       fetchReceipts();
@@ -173,7 +192,6 @@ export default function AdminDashboard() {
       });
       
       setIsSuperuser(isSuperuser);
-      setLoggedInUsername(username);
       setIsAuthenticated(true);
       setLoginOpen(false);
       fetchReceipts();
@@ -194,6 +212,7 @@ export default function AdminDashboard() {
         : Array.isArray(response.data?.receipts)
         ? response.data.receipts
         : [];
+      setSelectedReceipts([]);
 
       if (apiReceipts.length > 0) {
         setReceipts(apiReceipts);
@@ -251,11 +270,11 @@ export default function AdminDashboard() {
     setMenuAnchor(null);
   };
 
-  const exportToCSV = () => {
+  const exportToCSV = (reportReceipts, exportDescription) => {
     // Prepare CSV data
-    const headers = ['ID', 'Date', 'Time', 'Item/Description', 'Amount', 'Submitted By', 'Phone', 'Status', 'Approved By', 'Created At'];
+    const headers = ['ID', 'Receipt Date', 'Receipt Time', 'Item/Description', 'Amount', 'Submitted By', 'Phone', 'Status', 'Approved By', 'Submission Date', 'Receipt File URL'];
     
-    const csvData = filteredReceipts.map(receipt => [
+    const csvData = reportReceipts.map(receipt => [
       receipt.id,
       receipt.ocr_date || '',
       receipt.ocr_time || '',
@@ -263,32 +282,35 @@ export default function AdminDashboard() {
       receipt.ocr_price ?? '',
       receipt.user_name || '',
       receipt.user_phone || '',
-      receipt.approved_by ? 'Approved' : 'Pending',
+      receipt.approved_by && receipt.approved_by !== 'Pending' ? 'Approved' : 'Pending',
       receipt.approved_by || '',
-      new Date(receipt.created_at).toLocaleDateString('en-US'),
+      typeof receipt.created_at === 'string' ? receipt.created_at.slice(0, 10) : '',
+      receipt.image_path || '',
     ]);
 
     // Calculate totals
-    const totalAmount = filteredReceipts.reduce((sum, r) => sum + (parseFloat(r.ocr_price) || 0), 0);
-    const totalReceipts = filteredReceipts.length;
-    const approvedCount = filteredReceipts.filter(r => r.approved_by && r.approved_by !== 'Pending').length;
+    const totalAmount = reportReceipts.reduce((sum, r) => sum + (parseFloat(r.ocr_price) || 0), 0);
+    const totalReceipts = reportReceipts.length;
+    const approvedCount = reportReceipts.filter(r => r.approved_by && r.approved_by !== 'Pending').length;
 
     // Convert to CSV string with summary
     const csvContent = [
-      '# NECF Treasury System - Receipt Export',
-      `# Generated: ${new Date().toLocaleString('en-US')}`,
+      '# NECF Treasury - Receipt Register',
+      `# Generated: ${new Date().toLocaleString('tr-TR')}`,
+      `# Selection: ${exportDescription}`,
       `# Total Receipts: ${totalReceipts}`,
       `# Approved Receipts: ${approvedCount}`,
       `# Total Amount: ₺${totalAmount.toFixed(2)}`,
+      '# Receipt file links require access to the treasury server.',
       '',
       headers.join(','),
-      ...csvData.map(row => row.map(cell => `"${cell}"`).join(',')),
+      ...csvData.map(row => row.map(csvCell).join(',')),
       '',
       '# Summary',
-      `"Total Receipts","","","","${totalReceipts}","","","","",""`,
-      `"Total Amount","","","","₺${totalAmount.toFixed(2)}","","","","",""`,
-      `"Approved","","","","${approvedCount}","","","","",""`,
-      `"Pending","","","","${totalReceipts - approvedCount}","","","","",""`,
+      `"Total Receipts","","","","${totalReceipts}","","","","","",""`,
+      `"Total Amount","","","","₺${totalAmount.toFixed(2)}","","","","","",""`,
+      `"Approved","","","","${approvedCount}","","","","","",""`,
+      `"Pending","","","","${totalReceipts - approvedCount}","","","","","",""`,
     ].join('\n');
 
     // Create blob and download
@@ -304,152 +326,180 @@ export default function AdminDashboard() {
     setSnackbar({ open: true, message: 'CSV exported successfully', severity: 'success' });
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async (reportReceipts, exportDescription) => {
     setSnackbar({ open: true, message: 'Generating PDF report...', severity: 'info' });
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      setSnackbar({ open: true, message: 'Allow pop-ups to generate the PDF report.', severity: 'error' });
+      return;
+    }
+
+    printWindow.document.write('<!DOCTYPE html><title>Preparing report</title><p>Preparing receipt images...</p>');
+    let receiptPages;
+    try {
+      receiptPages = await Promise.all(reportReceipts.map(async (receipt) => {
+        const response = await api.get(`/receipts/${receipt.id}/pages`);
+        if (!Array.isArray(response.data?.pages) || response.data.pages.length === 0 ||
+            response.data.pages.some((url) => typeof url !== 'string' || !url)) {
+          throw new Error(`Receipt #${receipt.id} has no printable pages.`);
+        }
+        return { receipt, pages: response.data.pages };
+      }));
+    } catch (error) {
+      printWindow.close();
+      console.error('Unable to prepare receipt pages:', error);
+      setSnackbar({ open: true, message: 'Unable to load receipt pages. Check the receipts and try again.', severity: 'error' });
+      return;
+    }
     
     // Calculate totals
-    const totalAmount = filteredReceipts.reduce((sum, r) => sum + (parseFloat(r.ocr_price) || 0), 0);
-    const totalReceipts = filteredReceipts.length;
-    const approvedCount = filteredReceipts.filter(r => r.approved_by && r.approved_by !== 'Pending').length;
+    const totalAmount = reportReceipts.reduce((sum, r) => sum + (parseFloat(r.ocr_price) || 0), 0);
+    const totalReceipts = reportReceipts.length;
+    const approvedCount = reportReceipts.filter(r => r.approved_by && r.approved_by !== 'Pending').length;
     const pendingCount = totalReceipts - approvedCount;
 
     // Get the logo as base64 or use the public path
     const logoPath = window.location.origin + '/necf-logo.png';
 
-    // Create a new window for printing
-    const printWindow = window.open('', '_blank');
-    
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>NECF Treasury Report - ${new Date().toLocaleDateString()}</title>
+        <meta charset="UTF-8" />
+        <title>NECF Treasury - Receipt Register</title>
         <style>
           @media print {
             @page { margin: 0.5in; }
-            body { margin: 0; }
+            body { margin: 0; padding: 0; }
           }
           body {
-            font-family: Arial, sans-serif;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             padding: 20px;
-            color: #333;
+            color: #242424;
+            font-size: 11px;
           }
           .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 3px solid #6B1C23;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            margin-bottom: 18px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #6B1C23;
           }
           .header img {
-            width: 100px;
-            height: 100px;
-            margin-bottom: 15px;
+            width: 64px;
+            height: 64px;
             object-fit: contain;
           }
           .header h1 {
-            color: #6B1C23;
-            margin: 0 0 10px 0;
-            font-size: 28px;
+            color: #211c19;
+            margin: 0 0 4px;
+            font-size: 20px;
           }
           .header h2 {
-            color: #666;
-            margin: 5px 0;
-            font-size: 18px;
+            color: #625a54;
+            margin: 0;
+            font-size: 14px;
             font-weight: normal;
           }
           .meta-info {
-            text-align: center;
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 30px;
+            color: #625a54;
+            font-size: 11px;
+            margin-bottom: 20px;
           }
           .summary {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
-            margin-bottom: 30px;
+            gap: 12px;
+            margin-bottom: 24px;
           }
           .summary-card {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            border-left: 4px solid #6B1C23;
+            padding: 10px 0;
+            border-top: 1px solid #b8aaa5;
           }
           .summary-card h3 {
-            margin: 0 0 5px 0;
-            font-size: 14px;
-            color: #666;
+            margin: 0 0 6px;
+            font-size: 10px;
+            color: #625a54;
             font-weight: normal;
           }
           .summary-card p {
             margin: 0;
-            font-size: 24px;
+            font-size: 16px;
             font-weight: bold;
-            color: #333;
           }
           table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
+            table-layout: fixed;
           }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
           th {
-            background: #6B1C23;
-            color: white;
-            padding: 12px 8px;
+            color: #6B1C23;
+            padding: 8px 5px;
+            border-bottom: 1px solid #6B1C23;
             text-align: left;
-            font-size: 12px;
+            font-size: 9px;
             font-weight: 600;
-            text-transform: uppercase;
+            overflow-wrap: anywhere;
           }
           td {
-            padding: 10px 8px;
-            border-bottom: 1px solid #e0e0e0;
-            font-size: 13px;
-          }
-          tr:hover {
-            background: #f8f9fa;
+            padding: 8px 5px;
+            border-bottom: 1px solid #e5dfdc;
+            font-size: 10px;
+            vertical-align: top;
+            overflow-wrap: anywhere;
           }
           .status-approved {
-            background: #d4edda;
-            color: #155724;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
+            color: #285d38;
           }
           .status-pending {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
+            color: #77542f;
           }
           .total-row {
-            background: #f8f9fa;
             font-weight: bold;
-            border-top: 3px solid #6B1C23;
+            border-top: 1px solid #6B1C23;
           }
           .footer {
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px solid #e5dfdc;
+            color: #625a54;
+            font-size: 10px;
+          }
+          .receipt-page {
+            break-before: page;
+            page-break-before: always;
             text-align: center;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 2px solid #e0e0e0;
-            color: #666;
-            font-size: 12px;
+          }
+          .receipt-page h2 {
+            color: #6B1C23;
+            font-size: 13px;
+            margin: 0 0 12px;
+          }
+          .receipt-page img {
+            display: block;
+            max-width: 100%;
+            max-height: 9in;
+            object-fit: contain;
+            margin: 0 auto;
           }
         </style>
       </head>
       <body>
         <div class="header">
           <img src="${logoPath}" alt="NECF Logo" />
-          <h1>Near East Christian Fellowship</h1>
-          <h2>Treasury Management System</h2>
+          <div>
+            <h1>Near East Christian Fellowship</h1>
+            <h2>Treasury receipt register</h2>
+          </div>
         </div>
         
         <div class="meta-info">
-          <p><strong>Report Generated:</strong> ${new Date().toLocaleString('en-US')}</p>
-          <p><strong>Report Type:</strong> Receipt Summary</p>
+          <strong>Generated:</strong> ${new Date().toLocaleString('tr-TR')}
+          <br /><strong>Selection:</strong> ${escapeHtml(exportDescription)}
         </div>
 
         <div class="summary">
@@ -459,15 +509,15 @@ export default function AdminDashboard() {
           </div>
           <div class="summary-card">
             <h3>Total Amount</h3>
-            <p>₺${totalAmount.toFixed(2)}</p>
+            <p>${escapeHtml(formatReceiptAmount(totalAmount))}</p>
           </div>
           <div class="summary-card">
             <h3>Approved</h3>
-            <p style="color: #2e7d32;">${approvedCount}</p>
+            <p>${approvedCount}</p>
           </div>
           <div class="summary-card">
             <h3>Pending</h3>
-            <p style="color: #d32f2f;">${pendingCount}</p>
+            <p>${pendingCount}</p>
           </div>
         </div>
 
@@ -475,59 +525,70 @@ export default function AdminDashboard() {
           <thead>
             <tr>
               <th>ID</th>
-              <th>DATE</th>
-              <th>ITEM/DESCRIPTION</th>
-              <th>AMOUNT</th>
-              <th>SUBMITTED BY</th>
-              <th>PHONE</th>
-              <th>STATUS</th>
-              <th>APPROVED BY</th>
+              <th>Receipt date</th>
+              <th>Submitted</th>
+              <th>Item / description</th>
+              <th>Amount</th>
+              <th>Submitted by</th>
+              <th>Phone</th>
+              <th>Status</th>
+              <th>Approved by</th>
             </tr>
           </thead>
           <tbody>
-            ${filteredReceipts.map(receipt => `
+            ${reportReceipts.map(receipt => `
               <tr>
-                <td>#${receipt.id}</td>
-                <td>${receipt.ocr_date ? formatReceiptDate(receipt.ocr_date) : 'Not detected'}</td>
-                <td>${receipt.item_bought || '-'}</td>
-                <td>${formatReceiptAmount(receipt.ocr_price)}</td>
-                <td>${receipt.user_name || '-'}</td>
-                <td>${receipt.user_phone || '-'}</td>
+                <td>#${escapeHtml(receipt.id)}</td>
+                <td>${escapeHtml(receipt.ocr_date ? formatReceiptDate(receipt.ocr_date) : 'Not detected')}</td>
+                <td>${escapeHtml(typeof receipt.created_at === 'string' ? receipt.created_at.slice(0, 10) : '-')}</td>
+                <td>${escapeHtml(receipt.item_bought || '-')}</td>
+                <td>${escapeHtml(formatReceiptAmount(receipt.ocr_price))}</td>
+                <td>${escapeHtml(receipt.user_name || '-')}</td>
+                <td>${escapeHtml(receipt.user_phone || '-')}</td>
                 <td>
-                  <span class="${receipt.approved_by ? 'status-approved' : 'status-pending'}">
-                    ${receipt.approved_by ? 'Approved' : 'Pending'}
+                  <span class="${receipt.approved_by && receipt.approved_by !== 'Pending' ? 'status-approved' : 'status-pending'}">
+                    ${receipt.approved_by && receipt.approved_by !== 'Pending' ? 'Approved' : 'Pending'}
                   </span>
                 </td>
-                <td>${receipt.approved_by || '-'}</td>
+                <td>${escapeHtml(receipt.approved_by || '-')}</td>
               </tr>
             `).join('')}
             <tr class="total-row">
-              <td colspan="3"><strong>TOTAL</strong></td>
-              <td><strong>₺${totalAmount.toFixed(2)}</strong></td>
-              <td colspan="4"><strong>${totalReceipts} Receipt(s)</strong></td>
+              <td colspan="4"><strong>TOTAL</strong></td>
+              <td><strong>${escapeHtml(formatReceiptAmount(totalAmount))}</strong></td>
+              <td colspan="4"><strong>${totalReceipts} receipts</strong></td>
             </tr>
           </tbody>
         </table>
 
         <div class="footer">
-          <p>© 2025 Near East Christian Fellowship • Treasury Management System</p>
-          <p>This is an official financial document. Please retain for your records.</p>
+          <p>Near East Christian Fellowship · Treasury</p>
+          <p>Receipt images follow. Check extracted details against the originals.</p>
         </div>
-
-        <script>
-          window.onload = function() {
-            // Wait a bit for the image to load before printing
-            setTimeout(function() {
-              window.print();
-            }, 500);
-          }
-        </script>
+        ${receiptPages.flatMap(({ receipt, pages }) => pages.map((url, index) => `
+          <section class="receipt-page">
+            <h2>Receipt #${escapeHtml(receipt.id)} — page ${index + 1} of ${pages.length}</h2>
+            <img src="${escapeHtml(url)}" alt="Receipt #${escapeHtml(receipt.id)}, page ${index + 1}" />
+          </section>
+        `)).join('')}
       </body>
       </html>
     `;
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    try {
+      printWindow.document.open();
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      await Promise.all(Array.from(printWindow.document.images, (image) => image.decode()));
+      await printWindow.document.fonts.ready;
+      printWindow.focus();
+      printWindow.print();
+      setSnackbar({ open: true, message: 'Report ready. Choose Save as PDF in the print dialog.', severity: 'info' });
+    } catch (error) {
+      printWindow.close();
+      console.error('Unable to load report images:', error);
+      setSnackbar({ open: true, message: 'Unable to load all receipt images. The report was not printed.', severity: 'error' });
+    }
   };
 
   // Ensure receipts is always an array before filtering to avoid runtime errors
@@ -578,6 +639,34 @@ export default function AdminDashboard() {
     return timestamp(right) - timestamp(left);
   });
 
+  const exportSelection = selectReceiptsForExport(filteredReceipts, {
+    scope: exportScope,
+    selectedIds: selectedReceipts,
+    startDate: exportStartDate,
+    endDate: exportEndDate,
+  });
+
+  const openExportDialog = (format) => {
+    setExportFormat(format);
+    setExportScope(selectedReceipts.length ? 'selected' : 'all');
+    setExportAttempted(false);
+    setExportDialogOpen(true);
+  };
+
+  const handleExport = () => {
+    setExportAttempted(true);
+    if (exportSelection.error) return;
+    setExportDialogOpen(false);
+    const description = exportScope === 'date'
+      ? `Submission dates ${exportStartDate} to ${exportEndDate} (inclusive)`
+      : exportScope === 'selected' ? 'Selected receipts' : 'All visible receipts';
+    if (exportFormat === 'csv') {
+      exportToCSV(exportSelection.receipts, description);
+    } else {
+      exportToPDF(exportSelection.receipts, description);
+    }
+  };
+
   // Calculate statistics
   const stats = {
     total: safeReceipts.length,
@@ -585,6 +674,13 @@ export default function AdminDashboard() {
     approved: safeReceipts.filter(r => r && r.approved_by && r.approved_by !== 'Pending').length,
     pending: safeReceipts.filter(r => !r || !r.approved_by || r.approved_by === 'Pending').length,
   };
+  const recentReceipts = [...safeReceipts]
+    .sort((left, right) => {
+      const timestamp = (receipt) =>
+        Date.parse(receipt?.created_at || '') || Number(receipt?.id) || 0;
+      return timestamp(right) - timestamp(left);
+    })
+    .slice(0, 5);
 
   // Animated counter effect
   const [displayStats, setDisplayStats] = useState({ total: 0, totalAmount: 0, approved: 0, pending: 0 });
@@ -725,7 +821,7 @@ export default function AdminDashboard() {
             03
           </Typography>
 
-          <Box sx={{ gridArea: 'intro', position: 'relative', zIndex: 1, maxWidth: 700 }}>
+          <Box sx={{ gridArea: 'intro', position: 'relative', zIndex: 1, width: '100%', maxWidth: 700, justifySelf: { xs: 'center', lg: 'start' } }}>
             <Typography
               sx={{
                 mb: 2.5,
@@ -742,10 +838,10 @@ export default function AdminDashboard() {
               component="h1"
               sx={{
                 maxWidth: 700,
-                fontSize: 'clamp(3.2rem, 7.4vw, 7.2rem)',
+                fontSize: 'clamp(2rem, 4vw, 2.125rem)',
                 fontWeight: 500,
-                lineHeight: 0.94,
-                letterSpacing: '-0.075em',
+                lineHeight: 1.12,
+                letterSpacing: '-0.025em',
               }}
             >
               Stewardship,
@@ -800,8 +896,8 @@ export default function AdminDashboard() {
               position: 'relative',
               zIndex: 1,
               width: '100%',
-              maxWidth: 480,
-              justifySelf: { lg: 'end' },
+              maxWidth: { xs: 640, lg: 480 },
+              justifySelf: { xs: 'center', lg: 'end' },
               p: { xs: 3, sm: 4.5 },
               border: '1px solid rgba(33,28,25,0.1)',
               borderRadius: { xs: 3, sm: 4 },
@@ -948,13 +1044,13 @@ export default function AdminDashboard() {
 
   // Drawer content to be reused in both mobile and desktop drawers
   const drawerContent = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Logo */}
-      <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+      <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <div style={{
-          width: 48,
-          height: 48,
-          borderRadius: 14,
+          width: 40,
+          height: 40,
+          borderRadius: 12,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -965,8 +1061,8 @@ export default function AdminDashboard() {
             src="/necf-logo.png"
             alt="NECF Logo"
             style={{
-              width: 38,
-              height: 38,
+              width: 32,
+              height: 32,
               objectFit: 'contain',
             }}
           />
@@ -984,51 +1080,52 @@ export default function AdminDashboard() {
       <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
 
       {/* Navigation */}
-      <List sx={{ px: 2, py: 3 }}>
-        <ListItem disablePadding sx={{ mb: 1 }}>
+      <List sx={{ px: 1.5, py: 1 }}>
+        <ListItem disablePadding sx={{ mb: 0.25 }}>
           <ListItemButton 
             selected={currentView === 'dashboard'}
             onClick={() => { setCurrentView('dashboard'); setMobileOpen(false); }}
             sx={{
               borderRadius: 2,
-                '&.Mui-selected': {
+              py: 0.5,
+              '&.Mui-selected': {
                 background: 'linear-gradient(90deg, #6b1c23, #4a0e13)',
-                boxShadow: '0 8px 22px rgba(75,14,19,0.28)',
-                transform: 'translateX(-2px)',
                 '&:hover': { background: 'linear-gradient(90deg, #5a181e, #3c0c0f)' },
               },
             }}
           >
-            <ListItemIcon sx={{ color: 'white', minWidth: 40 }}>
+            <ListItemIcon sx={{ color: 'white', minWidth: 36 }}>
               <DashboardIcon />
             </ListItemIcon>
-            <ListItemText primary="Dashboard" />
+            <ListItemText primary="Dashboard" primaryTypographyProps={{ variant: 'body2' }} />
           </ListItemButton>
         </ListItem>
 
-        <ListItem disablePadding sx={{ mb: 1 }}>
+        <ListItem disablePadding sx={{ mb: 0.25 }}>
           <ListItemButton 
             onClick={() => { navigate('/upload'); setMobileOpen(false); }}
             sx={{
               borderRadius: 2,
+              py: 0.5,
               '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
             }}
           >
-            <ListItemIcon sx={{ color: 'white', minWidth: 40 }}>
+            <ListItemIcon sx={{ color: 'white', minWidth: 36 }}>
               <UploadFileIcon />
             </ListItemIcon>
-            <ListItemText primary="Upload" />
+            <ListItemText primary="Upload" primaryTypographyProps={{ variant: 'body2' }} />
           </ListItemButton>
         </ListItem>
 
         {/* Admin Management - Only visible to superusers */}
         {isSuperuser && (
-          <ListItem disablePadding sx={{ mb: 1 }}>
+          <ListItem disablePadding sx={{ mb: 0.25 }}>
             <ListItemButton 
               selected={currentView === 'admin-management'}
               onClick={() => { setCurrentView('admin-management'); setMobileOpen(false); }}
               sx={{
                 borderRadius: 2,
+                py: 0.5,
                 '&.Mui-selected': {
                   bgcolor: '#6B1C23',
                   '&:hover': { bgcolor: '#4A0E13' },
@@ -1036,10 +1133,10 @@ export default function AdminDashboard() {
                 '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
               }}
             >
-              <ListItemIcon sx={{ color: 'white', minWidth: 40 }}>
+              <ListItemIcon sx={{ color: 'white', minWidth: 36 }}>
                 <SupervisorAccountIcon />
               </ListItemIcon>
-              <ListItemText primary="Admin Management" />
+              <ListItemText primary="Admin Management" primaryTypographyProps={{ variant: 'body2' }} />
             </ListItemButton>
           </ListItem>
         )}
@@ -1048,18 +1145,19 @@ export default function AdminDashboard() {
       <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)', mx: 2 }} />
 
       {/* Categories */}
-      <Box sx={{ px: 2, py: 2 }}>
-        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', px: 2, mb: 1, display: 'block' }}>
+      <Box sx={{ px: 1.5, py: 1 }}>
+        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', px: 2, mb: 0.5, display: 'block' }}>
           CATEGORIES
         </Typography>
-        <List>
+        <List disablePadding>
           {categories.map((category) => (
-            <ListItem key={category.name} disablePadding sx={{ mb: 0.5 }}>
+            <ListItem key={category.name} disablePadding sx={{ mb: 0.25 }}>
               <ListItemButton
                 selected={selectedCategory === category.name}
                 onClick={() => { setSelectedCategory(category.name); setMobileOpen(false); }}
                 sx={{
                   borderRadius: 2,
+                  py: 0.5,
                   '&.Mui-selected': {
                     bgcolor: 'rgba(255,255,255,0.15)',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' },
@@ -1067,7 +1165,7 @@ export default function AdminDashboard() {
                   '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
                 }}
               >
-                <ListItemIcon sx={{ color: 'white', minWidth: 40 }}>
+                <ListItemIcon sx={{ color: 'white', minWidth: 36 }}>
                   {category.icon}
                 </ListItemIcon>
                 <ListItemText 
@@ -1081,22 +1179,23 @@ export default function AdminDashboard() {
       </Box>
 
       {/* Bottom Actions */}
-      <Box sx={{ mt: 'auto', p: 2 }}>
-        <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)', mb: 2 }} />
+      <Box sx={{ mt: 'auto', px: 1.5, py: 1 }}>
+        <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)', mb: 1 }} />
         
         {/* Dark Mode Toggle */}
-        <ListItem disablePadding sx={{ mb: 1 }}>
+        <ListItem disablePadding sx={{ mb: 0.25 }}>
           <ListItemButton 
             onClick={toggleDarkMode}
             sx={{
               borderRadius: 2,
+              py: 0.5,
               '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
             }}
           >
-            <ListItemIcon sx={{ color: 'white', minWidth: 40 }}>
+            <ListItemIcon sx={{ color: 'white', minWidth: 36 }}>
               {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
             </ListItemIcon>
-            <ListItemText primary={darkMode ? 'Light Mode' : 'Dark Mode'} />
+            <ListItemText primary={darkMode ? 'Light Mode' : 'Dark Mode'} primaryTypographyProps={{ variant: 'body2' }} />
           </ListItemButton>
         </ListItem>
 
@@ -1105,13 +1204,14 @@ export default function AdminDashboard() {
             onClick={() => { handleLogout(); setMobileOpen(false); }}
             sx={{
               borderRadius: 2,
+              py: 0.5,
               '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
             }}
           >
-            <ListItemIcon sx={{ color: 'white', minWidth: 40 }}>
+            <ListItemIcon sx={{ color: 'white', minWidth: 36 }}>
               <LogoutIcon />
             </ListItemIcon>
-            <ListItemText primary="Logout" />
+            <ListItemText primary="Logout" primaryTypographyProps={{ variant: 'body2' }} />
           </ListItemButton>
         </ListItem>
       </Box>
@@ -1220,10 +1320,10 @@ export default function AdminDashboard() {
               component="h1"
               sx={{
                 maxWidth: 800,
-                fontSize: 'clamp(3rem, 8vw, 7.5rem)',
+                fontSize: 'clamp(2rem, 4vw, 2.125rem)',
                 fontWeight: 500,
-                lineHeight: 0.94,
-                letterSpacing: '-0.075em',
+                lineHeight: 1.12,
+                letterSpacing: '-0.025em',
               }}
             >
               Stewardship,
@@ -1288,6 +1388,8 @@ export default function AdminDashboard() {
                   borderRight: 'none',
                   height: '100svh',
                   top: 0,
+                  overscrollBehavior: 'contain',
+                  scrollbarWidth: 'thin',
                 },
               }}
             >
@@ -1308,6 +1410,8 @@ export default function AdminDashboard() {
                   color: 'white',
                   borderRight: 'none',
                   height: '100svh',
+                  overscrollBehavior: 'contain',
+                  scrollbarWidth: 'thin',
                 },
               }}
             >
@@ -1376,13 +1480,13 @@ export default function AdminDashboard() {
                       color: darkMode ? 'white' : '#211c19',
                     }}
                   >
-                    Treasury receipts
+                    Treasury dashboard
                   </Typography>
                   <Typography
                     variant="caption"
                     sx={{ color: darkMode ? '#aaa' : '#746b64', letterSpacing: '0.02em' }}
                   >
-                    Review submissions and keep records moving
+                    Overview of receipt status and recent activity
                   </Typography>
                 </Box>
               </Box>
@@ -1415,7 +1519,7 @@ export default function AdminDashboard() {
                 <Button
                   variant="outlined"
                   startIcon={<FileDownloadIcon />}
-                  onClick={exportToCSV}
+                  onClick={() => openExportDialog('csv')}
                   sx={{ 
                     textTransform: 'none',
                     borderRadius: 999,
@@ -1440,7 +1544,7 @@ export default function AdminDashboard() {
                 <Button
                   variant="outlined"
                   startIcon={<PictureAsPdfIcon />}
-                  onClick={exportToPDF}
+                  onClick={() => openExportDialog('pdf')}
                   sx={{ 
                     textTransform: 'none',
                     borderRadius: 999,
@@ -1590,6 +1694,7 @@ export default function AdminDashboard() {
           sx={{ 
             flexGrow: 1, 
             minWidth: 0,
+            minHeight: 0,
             p: { xs: 2, sm: 3, md: 4 },
             overflow: 'auto', 
             bgcolor: isAuthenticated
@@ -1615,6 +1720,25 @@ export default function AdminDashboard() {
             <>
               {currentView === 'dashboard' ? (
                 <>
+              <Box sx={{ mb: 2 }}>
+                <Typography
+                  variant="overline"
+                  sx={{
+                    color: darkMode ? '#c9a4a7' : '#6b1c23',
+                    fontWeight: 700,
+                    letterSpacing: '0.12em',
+                  }}
+                >
+                  Current status
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ color: darkMode ? '#aaa' : '#746b64' }}
+                >
+                  At a glance, track submissions, approvals, and treasury value.
+                </Typography>
+              </Box>
+
               {/* Statistics Cards */}
               {loading ? (
                 <Grid container spacing={{ xs: 2, sm: 2.5, md: 3 }} sx={{ mb: { xs: 3, sm: 4 } }}>
@@ -1900,144 +2024,125 @@ export default function AdminDashboard() {
                 </Grid>
               )}
 
-              {/* Welcome Banner */}
-              <Collapse in={showWelcomeBanner}>
-                <Card 
+              <Collapse in={showActivityTimeline}>
+                <Card
                   elevation={0}
-                  sx={{ 
+                  sx={{
                     mb: { xs: 2, sm: 3, md: 4 },
-                    background: darkMode
-                      ? 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%)'
-                      : 'linear-gradient(135deg, #6B1C23 0%, #4A0E13 100%)',
-                    color: 'white',
-                    position: 'relative',
-                    overflow: 'hidden',
-                    animation: 'fadeIn 0.8s ease-out',
-                    '@keyframes fadeIn': {
-                      from: { opacity: 0, transform: 'translateY(-20px)' },
-                      to: { opacity: 1, transform: 'translateY(0)' },
-                    },
+                    borderRadius: 3,
+                    bgcolor: darkMode ? '#201b1a' : '#fffdfa',
+                    color: darkMode ? '#fff' : '#211c19',
+                    border: darkMode
+                      ? '1px solid rgba(255,255,255,0.08)'
+                      : '1px solid rgba(107,28,35,0.12)',
+                    boxShadow: '0 12px 32px rgba(33,28,25,0.045)',
                   }}
                 >
                   <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3 } }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 2,
+                        mb: 2,
+                      }}
+                    >
                       <Box>
-                        <Typography 
-                          variant="h5" 
-                          fontWeight="bold" 
-                          sx={{ 
-                            mb: 1,
-                            fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.5rem' },
-                          }}
-                        >
-                          Welcome back, {loggedInUsername}! 👋
+                        <Typography variant="h6" fontWeight={700}>
+                          Focus timeline
                         </Typography>
-                        <Typography 
-                          variant="body1" 
-                          sx={{ 
-                            opacity: 0.95, 
-                            mb: 2,
-                            fontSize: { xs: '0.875rem', sm: '1rem' },
-                          }}
+                        <Typography
+                          variant="body2"
+                          sx={{ color: darkMode ? '#aaa' : '#746b64' }}
                         >
-                          Here's your treasury overview for today
+                          Recent receipt activity
                         </Typography>
-                        <Box sx={{ display: 'flex', gap: { xs: 2, sm: 3 }, flexWrap: 'wrap' }}>
-                          <Box>
-                            <Typography 
-                              variant="h6" 
-                              fontWeight="bold"
-                              sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}
-                            >
-                              {stats.total}
-                            </Typography>
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                opacity: 0.9,
-                                fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                              }}
-                            >
-                              Total Receipts
-                            </Typography>
-                          </Box>
-                          <Box>
-                            <Typography 
-                              variant="h6" 
-                              fontWeight="bold"
-                              sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}
-                            >
-                              {hasRecognizedAmount
-                                ? formatReceiptAmount(stats.totalAmount)
-                                : 'Not detected'}
-                            </Typography>
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                opacity: 0.9,
-                                fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                              }}
-                            >
-                              Total Value
-                            </Typography>
-                          </Box>
-                          <Box>
-                            <Typography 
-                              variant="h6" 
-                              fontWeight="bold"
-                              sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}
-                            >
-                              {stats.pending}
-                            </Typography>
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                opacity: 0.9,
-                                fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                              }}
-                            >
-                              Needs Review
-                            </Typography>
-                          </Box>
-                        </Box>
                       </Box>
-                      <IconButton 
-                        onClick={() => setShowWelcomeBanner(false)}
-                        sx={{ 
-                          color: 'white',
-                          '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' },
-                          alignSelf: 'flex-start',
-                        }}
+                      <IconButton
+                        aria-label="Hide recent activity"
+                        onClick={() => setShowActivityTimeline(false)}
+                        sx={{ color: darkMode ? '#ddd' : '#6b1c23' }}
                       >
                         <CloseIcon />
                       </IconButton>
                     </Box>
+
+                    {recentReceipts.length === 0 ? (
+                      <Typography
+                        variant="body2"
+                        sx={{ py: 2, color: darkMode ? '#aaa' : '#746b64' }}
+                      >
+                        Receipt activity will appear here after the first upload.
+                      </Typography>
+                    ) : (
+                      <Box
+                        sx={{
+                          ml: 1,
+                          pl: 2.5,
+                          borderLeft: `2px solid ${darkMode ? 'rgba(255,255,255,0.14)' : 'rgba(107,28,35,0.16)'}`,
+                        }}
+                      >
+                        {recentReceipts.map((receipt, index) => {
+                          const approved = Boolean(
+                            receipt?.approved_by && receipt.approved_by !== 'Pending',
+                          );
+
+                          return (
+                            <Box
+                              key={receipt?.id ?? `recent-${index}`}
+                              sx={{
+                                position: 'relative',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 2,
+                                py: 1.25,
+                                borderBottom:
+                                  index < recentReceipts.length - 1
+                                    ? `1px solid ${darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(33,28,25,0.07)'}`
+                                    : 'none',
+                                '&::before': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  left: -31,
+                                  width: 14,
+                                  height: 14,
+                                  borderRadius: '50%',
+                                  bgcolor: approved ? '#6b1c23' : (darkMode ? '#aaa' : '#b8a9a2'),
+                                  border: `3px solid ${darkMode ? '#201b1a' : '#fffdfa'}`,
+                                },
+                              }}
+                            >
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" fontWeight={700} noWrap>
+                                  {receipt?.item_bought || `Receipt #${receipt?.id ?? ''}`}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  sx={{ color: darkMode ? '#aaa' : '#746b64' }}
+                                >
+                                  {receipt?.user_name || 'Unknown submitter'} ·{' '}
+                                  {formatReceiptDate(receipt?.created_at || receipt?.ocr_date)}
+                                </Typography>
+                              </Box>
+                              <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+                                <Typography variant="body2" fontWeight={700}>
+                                  {formatReceiptAmount(receipt?.ocr_price)}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  sx={{ color: approved ? '#6b1c23' : (darkMode ? '#c9a4a7' : '#746b64') }}
+                                >
+                                  {approved ? 'Approved' : 'Pending'}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    )}
                   </CardContent>
-                  {/* Decorative elements */}
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      top: -50,
-                      right: -50,
-                      width: { xs: 150, sm: 200 },
-                      height: { xs: 150, sm: 200 },
-                      borderRadius: '50%',
-                      bgcolor: 'rgba(255,255,255,0.1)',
-                      display: { xs: 'none', sm: 'block' },
-                    }}
-                  />
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      bottom: -30,
-                      left: -30,
-                      width: { xs: 100, sm: 150 },
-                      height: { xs: 100, sm: 150 },
-                      borderRadius: '50%',
-                      bgcolor: 'rgba(255,255,255,0.05)',
-                      display: { xs: 'none', sm: 'block' },
-                    }}
-                  />
                 </Card>
               </Collapse>
 
@@ -2093,6 +2198,8 @@ export default function AdminDashboard() {
                 <ReceiptTable 
                   receipts={filteredReceipts} 
                   onUpdate={fetchReceipts}
+                  selectedReceipts={selectedReceipts}
+                  setSelectedReceipts={setSelectedReceipts}
                   darkMode={darkMode}
                 />
               )}
@@ -2296,6 +2403,85 @@ export default function AdminDashboard() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        aria-labelledby="export-dialog-title"
+      >
+        <DialogTitle id="export-dialog-title">
+          Export {exportFormat.toUpperCase()}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            Choose from the receipts shown by the current search and filters. Changing filters clears your selection.
+          </Typography>
+          <RadioGroup
+            aria-label="Receipts to export"
+            value={exportScope}
+            onChange={(event) => {
+              setExportScope(event.target.value);
+              setExportAttempted(false);
+            }}
+          >
+            <FormControlLabel value="all" control={<Radio />} label={`All visible receipts (${filteredReceipts.length})`} />
+            <FormControlLabel value="selected" control={<Radio />} label={`Selected receipts (${selectedReceipts.length})`} />
+            <FormControlLabel value="date" control={<Radio />} label="Submission date range" />
+          </RadioGroup>
+          {exportScope === 'date' && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, mt: 2 }}>
+              <TextField
+                label="From"
+                type="date"
+                value={exportStartDate}
+                onChange={(event) => { setExportStartDate(event.target.value); setExportAttempted(false); }}
+                InputLabelProps={{ shrink: true }}
+                fullWidth
+              />
+              <TextField
+                label="To"
+                type="date"
+                value={exportEndDate}
+                onChange={(event) => { setExportEndDate(event.target.value); setExportAttempted(false); }}
+                InputLabelProps={{ shrink: true }}
+                fullWidth
+              />
+              <Typography variant="caption" sx={{ gridColumn: '1 / -1', color: 'text.secondary' }}>
+                Both dates are included. Dates use the submission date recorded by the server.
+              </Typography>
+            </Box>
+          )}
+          {exportScope === 'date' && exportSelection.missingDates > 0 && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              {exportSelection.missingDates} receipt(s) without a valid submission date will be excluded.
+            </Alert>
+          )}
+          {exportAttempted && exportSelection.error ? (
+            <Alert severity="error" sx={{ mt: 2 }}>{exportSelection.error}</Alert>
+          ) : !exportSelection.error && (
+            <Typography variant="body2" sx={{ mt: 2 }}>
+              {exportSelection.receipts.length} receipt(s) will be exported.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setExportDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleExport}>Export {exportFormat.toUpperCase()}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={snackbar.severity === 'error' ? null : 5000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
 
       {/* Floating Action Button */}
       {isAuthenticated && (

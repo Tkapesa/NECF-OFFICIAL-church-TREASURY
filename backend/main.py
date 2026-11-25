@@ -9,7 +9,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form, Request, Response
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -28,6 +28,7 @@ from models import Receipt, Admin
 from ocr_utils import (
     extract_receipt_data,
     get_available_ocr_languages,
+    get_pdf_page_count,
     render_pdf_preview,
     validate_pdf_bytes,
 )
@@ -599,9 +600,7 @@ def get_receipt_image(receipt_id: int, db: Session = Depends(get_db)):
     raise HTTPException(status_code=404, detail="Receipt image not found")
 
 
-@app.get("/api/receipts/{receipt_id}/preview")
-def get_receipt_preview(receipt_id: int, db: Session = Depends(get_db)):
-    """Serve the first PDF page as a thumbnail, or the original image."""
+def _receipt_file(receipt_id: int, db: Session) -> tuple[Receipt, bytes]:
     receipt = db.query(Receipt).filter(Receipt.id == receipt_id).first()
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
@@ -613,10 +612,38 @@ def get_receipt_preview(receipt_id: int, db: Session = Depends(get_db)):
             image_bytes = image_file.read()
     else:
         raise HTTPException(status_code=404, detail="Receipt image not found")
+    return receipt, image_bytes
+
+
+@app.get("/api/receipts/{receipt_id}/pages")
+def get_receipt_pages(receipt_id: int, request: Request, db: Session = Depends(get_db)):
+    """List printable page URLs for a receipt."""
+    receipt, image_bytes = _receipt_file(receipt_id, db)
+    if receipt.image_content_type != "application/pdf":
+        return {"pages": [_receipt_image_url(request, receipt_id)]}
+
+    try:
+        page_count = get_pdf_page_count(image_bytes)
+    except Exception as error:
+        logger.exception("Unable to read PDF pages for receipt %s", receipt_id)
+        raise HTTPException(status_code=422, detail="Unable to read receipt PDF pages") from error
+
+    preview_url = _receipt_preview_url(request, receipt_id)
+    return {"pages": [f"{preview_url}?page={page}" for page in range(1, page_count + 1)]}
+
+
+@app.get("/api/receipts/{receipt_id}/preview")
+def get_receipt_preview(
+    receipt_id: int, page: int = Query(1, ge=1), db: Session = Depends(get_db)
+):
+    """Serve a PDF page as a thumbnail, or the original image."""
+    receipt, image_bytes = _receipt_file(receipt_id, db)
 
     if receipt.image_content_type == "application/pdf":
         try:
-            image_bytes = render_pdf_preview(image_bytes)
+            image_bytes = render_pdf_preview(image_bytes, page)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
         except Exception as error:
             logger.exception("Unable to render PDF preview for receipt %s", receipt_id)
             raise HTTPException(
@@ -625,6 +652,8 @@ def get_receipt_preview(receipt_id: int, db: Session = Depends(get_db)):
             ) from error
         content_type = "image/png"
     else:
+        if page != 1:
+            raise HTTPException(status_code=404, detail="Receipt page not found")
         content_type = receipt.image_content_type or "image/jpeg"
 
     return Response(

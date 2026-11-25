@@ -28,6 +28,13 @@ A complete full-stack web application for managing church receipts with automati
 - ✏️ Inline editing of OCR-extracted fields
 - 💾 Auto-save functionality
 - 🔄 Refresh and logout capabilities
+- 📄 Print a PDF report with every receipt page, or export CSV with links to the original files
+
+CSV receipt links require access to the treasury server; the files themselves are not embedded.
+For either export, choose all visible receipts, select individual receipts, or
+enter an inclusive submission-date range. Exports respect the current search and
+filters; changing those filters clears the selection. Date ranges use the
+submission date recorded by the server.
 
 ## 🎨 Tech Stack
 

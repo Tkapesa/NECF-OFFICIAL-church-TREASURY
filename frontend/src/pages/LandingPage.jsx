@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AdminPanelSettingsRounded,
   ArrowForwardRounded,
   CloudUploadRounded,
 } from '@mui/icons-material';
@@ -17,7 +16,6 @@ const panels = [
       'A thoughtful home for receipt submissions and treasury records at Near East Christian Fellowship.',
     actions: [
       { label: 'Submit a receipt', route: '/upload', icon: CloudUploadRounded, primary: true },
-      { label: 'Treasury sign in', route: '/admin', icon: AdminPanelSettingsRounded },
     ],
   },
   {
@@ -35,10 +33,8 @@ const panels = [
     eyebrow: 'A careful process, by design',
     title: 'Review with\nconfidence.',
     description:
-      'Authorized treasury administrators can review incoming receipts and keep records moving through the right hands.',
-    actions: [
-      { label: 'Open treasury records', route: '/admin', icon: AdminPanelSettingsRounded, primary: true },
-    ],
+      'The treasury team reviews incoming receipts and keeps records moving through the right hands.',
+    actions: [],
   },
   {
     number: '04',
@@ -48,7 +44,6 @@ const panels = [
       'A considered workflow helps the church care for its resources with clarity, accountability, and attention.',
     actions: [
       { label: 'Submit a receipt', route: '/upload', icon: CloudUploadRounded, primary: true },
-      { label: 'Administrator access', route: '/admin', icon: AdminPanelSettingsRounded },
     ],
   },
 ];
@@ -191,19 +186,21 @@ export default function LandingPage() {
                   </div>
                 )}
 
-                <div className="max-w-3xl py-[clamp(1rem,4svh,3.5rem)]">
+                <div className={index === 0 ? 'grid items-center gap-8 py-[clamp(1rem,4svh,3.5rem)] md:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] md:gap-6' : 'py-[clamp(1rem,4svh,3.5rem)]'}>
+                <div className="max-w-3xl">
                   <p className="mb-5 text-[0.68rem] font-bold uppercase tracking-[0.22em] text-[#6b1c23] sm:text-xs">
                     {panel.eyebrow}
                   </p>
                   <Heading
                     id={`panel-title-${panel.number}`}
-                    className="whitespace-pre-line text-[clamp(2.7rem,8vw,7.5rem)] font-medium leading-[0.94] tracking-[-0.075em]"
+                    className="whitespace-pre-line text-[clamp(2rem,4vw,2.125rem)] font-medium leading-[1.12] tracking-[-0.025em]"
                   >
                     {panel.title}
                   </Heading>
                   <p className="mt-6 max-w-xl text-base leading-7 text-[#514a45] sm:mt-8 sm:text-lg sm:leading-8">
                     {panel.description}
                   </p>
+                  {panel.actions.length > 0 && (
                   <div className="mt-8 flex flex-wrap gap-3 sm:mt-10">
                     {panel.actions.map((action) => {
                       const Icon = action.icon;
@@ -229,6 +226,21 @@ export default function LandingPage() {
                       );
                     })}
                   </div>
+                  )}
+                </div>
+                {index === 0 && (
+                  <div className="landing-emblem" aria-hidden="true">
+                    <div className="landing-emblem-orbit landing-emblem-orbit-outer" />
+                    <div className="landing-emblem-orbit landing-emblem-orbit-inner" />
+                    <div className="landing-emblem-scene">
+                      <div className="landing-emblem-coin">
+                        <img className="landing-emblem-face" src="/necf-logo.png" alt="" />
+                        <img className="landing-emblem-face landing-emblem-back" src="/necf-logo.png" alt="" />
+                      </div>
+                    </div>
+                    <span className="landing-emblem-caption">NECF / STEWARDSHIP</span>
+                  </div>
+                )}
                 </div>
 
                 <footer className="flex items-end justify-between gap-4 border-t border-[#211c19]/10 pt-4 text-[0.65rem] uppercase tracking-[0.15em] text-[#514a45]/70 sm:pt-5">

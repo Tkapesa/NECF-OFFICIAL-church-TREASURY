@@ -44,7 +44,41 @@ const theme = createTheme({
     },
   },
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: 'Georgia, "Times New Roman", serif',
+    h4: { fontSize: '2.125rem' },
+    h6: { fontSize: '1.25rem' },
+    body1: { fontSize: '1rem' },
+    body2: { fontSize: '0.9rem' },
+    subtitle1: { fontSize: '1.25rem' },
+    subtitle2: { fontSize: '0.9rem' },
+    button: { fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+  },
+  components: {
+    MuiInputBase: {
+      styleOverrides: {
+        root: { fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+      },
+    },
+    MuiFormLabel: {
+      styleOverrides: {
+        root: { fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+      },
+    },
+    MuiMenuItem: {
+      styleOverrides: {
+        root: { fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: { fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        head: { fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+      },
+    },
   },
 });
 
